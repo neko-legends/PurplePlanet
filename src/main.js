@@ -10,7 +10,7 @@ const renderer = new THREE.WebGLRenderer({
   canvas,
   alpha: false,
   antialias: true,
-  powerPreference: "low-power",
+  powerPreference: "high-performance",
 });
 
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -24,10 +24,13 @@ const cameraBasePosition = new THREE.Vector3();
 const cameraBaseTarget = new THREE.Vector3(0, 0.2, 0);
 const cameraSwayPosition = new THREE.Vector3();
 const cameraSwayTarget = new THREE.Vector3();
+const _swayOffset = new THREE.Vector3();
 const planetWorldPosition = new THREE.Vector3();
 const orbitVisualOffset = new THREE.Vector3();
 const clock = new THREE.Clock();
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+const WHITE = new THREE.Color("#ffffff");
+const GUIDE_GREY = new THREE.Color("#79819a");
 const THEMES = {
   nebula: ["#245dff", "#5146ff", "#8c35ff", "#f725d6", "#ff2f8a"],
   aurora: ["#2170ff", "#22dcff", "#6d52ff", "#e83cff", "#ff4f8f"],
@@ -160,6 +163,9 @@ function animate(timestamp = 0) {
     trail.material.uniforms.uTime.value = time;
   }
 
+  const occlusionCenter = orbitSystem.occlusion.center.value;
+  const occlusionRadius = orbitSystem.occlusion.radius.value;
+
   for (const sprite of orbitSystem.sprites) {
     const runner = sprite.userData.runner;
     const orbit = runner.orbit;
@@ -171,12 +177,11 @@ function animate(timestamp = 0) {
       Math.sin(angle) * (orbit.ry + radial * 0.42),
       orbitDepthAt(angle, orbit.depth) + sprite.userData.layerZ,
     );
-    const occlusionCenter = orbitSystem.occlusion.center.value;
     const distanceToPlanet = Math.hypot(
       sprite.position.x - occlusionCenter.x,
       sprite.position.y - occlusionCenter.y,
     );
-    const planetFade = clamp((distanceToPlanet - orbitSystem.occlusion.radius.value * 0.88) / 0.28, 0, 1);
+    const planetFade = clamp((distanceToPlanet - occlusionRadius * 0.88) / 0.28, 0, 1);
     const foreground = clamp(-Math.sin(angle), 0, 1);
     const lensBlur = sprite.userData.focusBlur * (0.42 + foreground * 0.78);
     sprite.material.opacity =
@@ -316,10 +321,10 @@ function updateCameraSway(time) {
 
   cameraSwayPosition
     .copy(cameraBasePosition)
-    .add(new THREE.Vector3(x * amount, y * amount, z * amount));
+    .add(_swayOffset.set(x * amount, y * amount, z * amount));
   cameraSwayTarget
     .copy(cameraBaseTarget)
-    .add(new THREE.Vector3(targetX * amount, targetY * amount, 0));
+    .add(_swayOffset.set(targetX * amount, targetY * amount, 0));
 
   camera.position.copy(cameraSwayPosition);
   camera.lookAt(cameraSwayTarget);
@@ -449,7 +454,7 @@ function createNebula({ palette }) {
       float fbm(vec2 p) {
         float value = 0.0;
         float amplitude = 0.52;
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 4; i++) {
           value += noise(p) * amplitude;
           p = p * 2.08 + vec2(17.3, -9.2);
           amplitude *= 0.5;
@@ -523,7 +528,7 @@ function createBackdrop({ backdrop, palette }) {
     positions[i3 + 2] = -34 - Math.random() * 24;
 
     const color = samplePalette(palette, Math.random())
-      .lerp(new THREE.Color("#ffffff"), Math.random() * 0.28)
+      .lerp(WHITE, Math.random() * 0.28)
       .multiplyScalar(0.55 + Math.random() * 0.62);
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
@@ -575,10 +580,13 @@ function createBackdrop({ backdrop, palette }) {
     vertexColors: true,
   });
 
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+
   return {
     geometry,
     material,
-    points: new THREE.Points(geometry, material),
+    points,
   };
 }
 
@@ -599,7 +607,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
     const depth = createOrbitDepth(i, orbitCount);
     const gradientT = 1 - i / Math.max(1, orbitCount - 1);
     const color = samplePalette(palette, gradientT);
-    const guideColor = color.clone().lerp(new THREE.Color("#79819a"), 0.86);
+    const guideColor = color.clone().lerp(GUIDE_GREY, 0.86);
     const tube = 0.0048 + i * 0.00072;
     const opacity = Math.max(0.0028, 0.011 - i * 0.00028);
     const focusBlur = orbitFocusBlur(i, orbitCount);
@@ -737,7 +745,7 @@ function createOrbitTube(
     new OrbitCurve(rx, ry, 0, Math.PI * 2, depth),
     segments,
     radius,
-    5,
+    3,
     true,
   );
   const material = new THREE.ShaderMaterial({
@@ -804,23 +812,6 @@ function createOrbitTube(
   return new THREE.Mesh(geometry, material);
 }
 
-function createOrbitArc(rx, ry, segments, radius, color, opacity, start, length) {
-  const geometry = new THREE.TubeGeometry(
-    new OrbitCurve(rx, ry, start, length, flatOrbitDepth()),
-    Math.max(24, Math.floor(segments * (length / (Math.PI * 2)))),
-    radius,
-    5,
-    false,
-  );
-  const material = new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-  return new THREE.Mesh(geometry, material);
-}
 
 function createOrbitTrail(rx, ry, segments, radius, color, options) {
   const occlusion = options.occlusion || createPlanetOcclusionUniforms();
@@ -828,7 +819,7 @@ function createOrbitTrail(rx, ry, segments, radius, color, options) {
     new OrbitCurve(rx, ry, 0, Math.PI * 2, options.depth || flatOrbitDepth()),
     segments,
     radius,
-    5,
+    3,
     true,
   );
   const material = new THREE.ShaderMaterial({
@@ -961,7 +952,7 @@ function createOrbitDust(orbits, count, occlusion = createPlanetOcclusionUniform
 
     const color = orbit.color
       .clone()
-      .lerp(new THREE.Color("#ffffff"), Math.random() * 0.38)
+      .lerp(WHITE, Math.random() * 0.38)
       .multiplyScalar(1.18);
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
@@ -1054,10 +1045,13 @@ function createOrbitDust(orbits, count, occlusion = createPlanetOcclusionUniform
     `,
   });
 
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+
   return {
     geometry,
     material,
-    points: new THREE.Points(geometry, material),
+    points,
   };
 }
 
@@ -1082,7 +1076,7 @@ function createTrailSparks(trails, count, occlusion = createPlanetOcclusionUnifo
     const i4 = i * 4;
     const color = runner.orbit.color
       .clone()
-      .lerp(new THREE.Color("#ffffff"), Math.random() * 0.34)
+      .lerp(WHITE, Math.random() * 0.34)
       .multiplyScalar(1.22);
 
     orbitData[i2] = runner.orbit.rx;
@@ -1195,10 +1189,13 @@ function createTrailSparks(trails, count, occlusion = createPlanetOcclusionUnifo
     `,
   });
 
+  const points = new THREE.Points(geometry, material);
+  points.frustumCulled = false;
+
   return {
     geometry,
     material,
-    points: new THREE.Points(geometry, material),
+    points,
   };
 }
 
@@ -1212,7 +1209,7 @@ function createOrbitSprites(trails) {
     }
 
     const runner = trails[i].userData.runner;
-    const spriteColor = runner.orbit.color.clone().lerp(new THREE.Color("#ffffff"), 0.12);
+    const spriteColor = runner.orbit.color.clone().lerp(WHITE, 0.12);
     const material = new THREE.SpriteMaterial({
       map: texture,
       color: spriteColor,
@@ -1267,7 +1264,7 @@ function createPlanet({ palette }) {
   const rayFan = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: createRayFanTexture(),
-      color: inner.clone().lerp(new THREE.Color("#ffffff"), 0.05),
+      color: inner.clone().lerp(WHITE, 0.05),
       transparent: true,
       opacity: 0.42,
       blending: THREE.AdditiveBlending,
@@ -1287,7 +1284,7 @@ function createPlanet({ palette }) {
       uniforms: {
         uTime: { value: 0 },
         uPulse: { value: 0.5 },
-        uRimColor: { value: inner.clone().lerp(new THREE.Color("#ffffff"), 0.05) },
+        uRimColor: { value: inner.clone().lerp(WHITE, 0.05) },
         uShadeColor: { value: mid.clone().multiplyScalar(0.012) },
       },
       vertexShader: `
@@ -1386,11 +1383,12 @@ function createPlanet({ palette }) {
 
 function createPlanetSoftHalo(inner, mid, outer) {
   const group = new THREE.Group();
+  const haloTexture = createPlanetHaloTexture();
 
   const backVeil = new THREE.Sprite(
     new THREE.SpriteMaterial({
-      map: createPlanetHaloTexture(),
-      color: outer.clone().lerp(mid, 0.45).lerp(new THREE.Color("#ffffff"), 0.08),
+      map: haloTexture,
+      color: outer.clone().lerp(mid, 0.45).lerp(WHITE, 0.08),
       transparent: true,
       opacity: 0.018,
       blending: THREE.AdditiveBlending,
@@ -1404,8 +1402,8 @@ function createPlanetSoftHalo(inner, mid, outer) {
 
   const hotEdge = new THREE.Sprite(
     new THREE.SpriteMaterial({
-      map: createPlanetHaloTexture(),
-      color: inner.clone().lerp(new THREE.Color("#ffffff"), 0.18),
+      map: haloTexture,
+      color: inner.clone().lerp(WHITE, 0.18),
       transparent: true,
       opacity: 0.035,
       blending: THREE.AdditiveBlending,
@@ -1446,7 +1444,7 @@ function createPlanetLimbBokeh(palette, planetRadius) {
     positions[i3 + 2] = -0.34 - Math.random() * 0.72;
 
     const color = samplePalette(palette, 0.54 + Math.random() * 0.46)
-      .lerp(new THREE.Color("#ffffff"), 0.12 + Math.random() * 0.28)
+      .lerp(WHITE, 0.12 + Math.random() * 0.28)
       .multiplyScalar(1.45);
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
@@ -1525,7 +1523,7 @@ function createPlanetPinLights(palette) {
     positions[i3 + 2] = Math.sin(phi) * Math.sin(theta) * radius;
 
     const color = samplePalette(palette, Math.random() * 0.55 + 0.45)
-      .lerp(new THREE.Color("#ffffff"), Math.random() * 0.32)
+      .lerp(WHITE, Math.random() * 0.32)
       .multiplyScalar(1.55);
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
