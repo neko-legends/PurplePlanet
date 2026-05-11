@@ -61,9 +61,10 @@ class OrbitCurve extends THREE.Curve {
 
   getPoint(t) {
     const angle = this.start + this.length * t;
+    const radial = orbitRadialAt(angle, this.depth);
     return new THREE.Vector3(
-      Math.cos(angle) * this.rx,
-      Math.sin(angle) * this.ry,
+      Math.cos(angle) * (this.rx + radial),
+      Math.sin(angle) * (this.ry + radial * 0.42),
       orbitDepthAt(angle, this.depth),
     );
   }
@@ -120,17 +121,30 @@ function animate() {
     const orbit = runner.orbit;
     const progress = fract(runner.phase + runner.direction * time * runner.speed);
     const angle = progress * Math.PI * 2;
+    const radial = orbitRadialAt(angle, orbit.depth);
     sprite.position.set(
-      Math.cos(angle) * orbit.rx,
-      Math.sin(angle) * orbit.ry,
+      Math.cos(angle) * (orbit.rx + radial),
+      Math.sin(angle) * (orbit.ry + radial * 0.42),
       orbitDepthAt(angle, orbit.depth) + sprite.userData.layerZ,
     );
+    const distanceToPlanet = Math.hypot(
+      sprite.position.x - planet.group.position.x,
+      sprite.position.y - planet.group.position.y,
+    );
+    const planetFade = clamp((distanceToPlanet - orbitSystem.occlusion.radius.value * 0.88) / 0.28, 0, 1);
+    const foreground = clamp(-Math.sin(angle), 0, 1);
     sprite.material.opacity =
       sprite.userData.opacity *
-      (0.72 + Math.sin(time * sprite.userData.twinkle + sprite.userData.phase) * 0.28);
+      (0.72 + Math.sin(time * sprite.userData.twinkle + sprite.userData.phase) * 0.28) *
+      (0.78 + foreground * 0.42) *
+      planetFade;
     sprite.material.rotation =
       angle - Math.PI / 2 + sprite.userData.rotationJitter + Math.sin(time + sprite.userData.phase) * 0.04;
-    sprite.scale.set(sprite.userData.width, sprite.userData.height, 1);
+    sprite.scale.set(
+      sprite.userData.width * (0.82 + foreground * 0.4),
+      sprite.userData.height * (0.82 + foreground * 0.4),
+      1,
+    );
   }
 
   updateCameraSway(cameraTime);
@@ -160,6 +174,8 @@ function resize() {
   );
   planet.group.scale.setScalar(portraitLayout ? (camera.aspect < 0.58 ? 0.82 : 0.92) : 1);
   orbitSystem.group.scale.setScalar(portraitLayout ? 0.94 : 1.23);
+  orbitSystem.occlusion.center.value.copy(planet.group.position);
+  orbitSystem.occlusion.radius.value = 1.58 * planet.group.scale.x;
 
   const pixelRatio = Math.min(window.devicePixelRatio || 1, settings.pixelRatio);
   renderer.setPixelRatio(pixelRatio);
@@ -255,13 +271,13 @@ function readSettings() {
     },
     cinematic: {
       backdrop: 3600,
-      dust: 32000,
-      sparkDust: 32000,
+      dust: 36000,
+      sparkDust: 52000,
       segments: 420,
       exposure: 0.82,
-      bloomStrength: 0.58,
-      bloomRadius: 0.5,
-      bloomThreshold: 0.54,
+      bloomStrength: 0.64,
+      bloomRadius: 0.58,
+      bloomThreshold: 0.5,
       pixelRatio: 1.35,
     },
   };
@@ -358,22 +374,28 @@ function createNebula({ palette }) {
         float detail = fbm(uv * 7.5 + vec2(-slow * 1.3, slow));
         float darkVeil = fbm(uv * 4.4 + vec2(8.0, -2.0));
         float blackDust = fbm(uv * 5.8 + vec2(-3.0, 7.2));
+        float deepRift = fbm(uv * 3.1 + vec2(11.0, 4.6));
+        float fineVeil = fbm(uv * 13.0 + vec2(-slow * 2.0, slow * 1.2));
         float cloud = smoothstep(0.26, 0.92, broad + detail * 0.46);
         float shadow = smoothstep(0.48, 0.86, darkVeil);
-        float voids = smoothstep(0.54, 0.79, blackDust) * smoothstep(0.04, 0.45, uv.y);
+        float voids =
+          smoothstep(0.54, 0.79, blackDust) * smoothstep(0.04, 0.45, uv.y) +
+          smoothstep(0.52, 0.76, deepRift) * smoothstep(0.18, 0.88, uv.y) * 0.75;
         float verticalBand = smoothstep(0.7, -0.1, abs(p.y + 0.06));
         float dustBand = smoothstep(0.58, 0.0, abs(p.y + 0.16 - p.x * 0.055));
         float planetGlow = exp(-length((uv - vec2(0.68, 0.54)) * vec2(2.2, 3.0)) * 3.7);
         float rays = rayFan(vec2(0.66, 0.54), uv, 1.0);
+        float sideNebula = exp(-length((uv - vec2(0.1, 0.18)) * vec2(2.1, 4.1)) * 3.0);
         float vignette = smoothstep(1.05, 0.22, length(p));
 
         vec3 base = vec3(0.0015, 0.002, 0.009);
-        vec3 blueMist = uOuter * (0.012 + cloud * 0.046 + dustBand * 0.014);
-        vec3 purpleMist = uMid * (cloud * verticalBand * 0.044 + dustBand * 0.018);
-        vec3 hotMist = uInner * (planetGlow * 0.092 + rays * 0.16);
+        vec3 blueMist = uOuter * (0.012 + cloud * 0.052 + dustBand * 0.017 + sideNebula * 0.034);
+        vec3 purpleMist = uMid * (cloud * verticalBand * 0.052 + dustBand * 0.024 + fineVeil * 0.012);
+        vec3 hotMist = uInner * (planetGlow * 0.105 + rays * 0.19);
         vec3 color = base + blueMist + purpleMist + hotMist;
-        color *= mix(1.0, 0.3, shadow * 0.72 + voids * 0.86);
-        color *= 0.08 + vignette * 0.58;
+        color *= mix(1.0, 0.24, shadow * 0.66 + voids * 0.82);
+        color += uOuter * fineVeil * cloud * 0.012;
+        color *= 0.07 + vignette * 0.62;
 
         gl_FragColor = vec4(color, 1.0);
       }
@@ -462,6 +484,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
   const group = new THREE.Group();
   group.rotation.x = -1.14;
   group.rotation.z = -0.035;
+  const occlusion = createPlanetOcclusionUniforms();
 
   const orbits = [];
   const trails = [];
@@ -478,8 +501,17 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
     const tube = 0.0048 + i * 0.00072;
     const opacity = Math.max(0.0028, 0.011 - i * 0.00028);
 
-    const glow = createOrbitTube(rx, ry, segments, tube * 6.2, guideColor, opacity * 0.07, depth);
-    const core = createOrbitTube(rx, ry, segments, tube, guideColor, opacity, offsetDepth(depth, 0.006));
+    const glow = createOrbitTube(rx, ry, segments, tube * 6.2, guideColor, opacity * 0.07, depth, occlusion);
+    const core = createOrbitTube(
+      rx,
+      ry,
+      segments,
+      tube,
+      guideColor,
+      opacity,
+      offsetDepth(depth, 0.006),
+      occlusion,
+    );
     group.add(glow, core);
 
     const trailCount = i < 3 ? 2 : i < 9 ? 3 : 4;
@@ -501,6 +533,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
         {
           ...trailOptions,
           depth: offsetDepth(depth, 0.036 + j * 0.018),
+          occlusion,
           halo: 1,
           length: trailOptions.length * 1.2,
           opacity: trailOptions.opacity * 0.12,
@@ -515,7 +548,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
         segments,
         tube * (0.7 + Math.random() * 1.2),
         color,
-        { ...trailOptions, depth: offsetDepth(depth, 0.052 + j * 0.018), halo: 0 },
+        { ...trailOptions, depth: offsetDepth(depth, 0.052 + j * 0.018), occlusion, halo: 0 },
       );
       trail.userData.runner.layerZ = 0.08 + j * 0.018;
       group.add(trail);
@@ -526,10 +559,10 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
     orbits.push({ rx, ry, color, guideColor, gradientT, depth });
   }
 
-  const dustCloud = createOrbitDust(orbits, dust);
+  const dustCloud = createOrbitDust(orbits, dust, occlusion);
   group.add(dustCloud.points);
 
-  const sparkCloud = createTrailSparks(trails, sparkDust);
+  const sparkCloud = createTrailSparks(trails, sparkDust, occlusion);
   group.add(sparkCloud.points);
 
   const sprites = createOrbitSprites(trails);
@@ -544,10 +577,20 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
     sprites,
     trails,
     allTrails,
+    occlusion,
   };
 }
 
-function createOrbitTube(rx, ry, segments, radius, color, opacity, depth = flatOrbitDepth()) {
+function createOrbitTube(
+  rx,
+  ry,
+  segments,
+  radius,
+  color,
+  opacity,
+  depth = flatOrbitDepth(),
+  occlusion = createPlanetOcclusionUniforms(),
+) {
   const geometry = new THREE.TubeGeometry(
     new OrbitCurve(rx, ry, 0, Math.PI * 2, depth),
     segments,
@@ -563,12 +606,16 @@ function createOrbitTube(rx, ry, segments, radius, color, opacity, depth = flatO
       uColor: { value: color },
       uOpacity: { value: opacity },
       uSeed: { value: Math.random() * 1000 },
+      uPlanetCenter: occlusion.center,
+      uPlanetRadius: occlusion.radius,
     },
     vertexShader: `
       varying float vProgress;
+      varying vec3 vLocalPosition;
 
       void main() {
         vProgress = uv.x;
+        vLocalPosition = position;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -576,18 +623,29 @@ function createOrbitTube(rx, ry, segments, radius, color, opacity, depth = flatO
       uniform vec3 uColor;
       uniform float uOpacity;
       uniform float uSeed;
+      uniform vec3 uPlanetCenter;
+      uniform float uPlanetRadius;
       varying float vProgress;
+      varying vec3 vLocalPosition;
 
       float hash(float p) {
         return fract(sin(p * 437.31 + uSeed) * 43758.5453);
       }
 
+      float planetOcclusion(vec3 p) {
+        float disk = 1.0 - smoothstep(uPlanetRadius * 0.88, uPlanetRadius * 1.06, length(p.xy - uPlanetCenter.xy));
+        return clamp(disk, 0.0, 1.0);
+      }
+
       void main() {
+        float angle = vProgress * 6.28318530718;
         float coarse = hash(floor(vProgress * 110.0));
         float fine = hash(floor(vProgress * 420.0));
         float lane = 0.34 + smoothstep(0.16, 0.92, coarse) * 0.58 + fine * 0.16;
         float breath = 0.72 + sin((vProgress + uSeed * 0.001) * 6.2831853 * 3.0) * 0.18;
-        float alpha = uOpacity * lane * breath;
+        float foreground = smoothstep(0.08, 0.95, -sin(angle));
+        float alpha = uOpacity * lane * breath * mix(0.62, 1.22, foreground);
+        alpha *= 1.0 - planetOcclusion(vLocalPosition) * 0.98;
         if (alpha < 0.002) discard;
         gl_FragColor = vec4(uColor * (0.82 + lane * 0.68), alpha);
       }
@@ -615,6 +673,7 @@ function createOrbitArc(rx, ry, segments, radius, color, opacity, start, length)
 }
 
 function createOrbitTrail(rx, ry, segments, radius, color, options) {
+  const occlusion = options.occlusion || createPlanetOcclusionUniforms();
   const geometry = new THREE.TubeGeometry(
     new OrbitCurve(rx, ry, 0, Math.PI * 2, options.depth || flatOrbitDepth()),
     segments,
@@ -635,12 +694,16 @@ function createOrbitTrail(rx, ry, segments, radius, color, options) {
       uOpacity: { value: options.opacity },
       uDirection: { value: options.direction },
       uHalo: { value: options.halo || 0 },
+      uPlanetCenter: occlusion.center,
+      uPlanetRadius: occlusion.radius,
     },
     vertexShader: `
       varying float vProgress;
+      varying vec3 vLocalPosition;
 
       void main() {
         vProgress = uv.x;
+        vLocalPosition = position;
         gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
       }
     `,
@@ -653,7 +716,15 @@ function createOrbitTrail(rx, ry, segments, radius, color, options) {
       uniform float uOpacity;
       uniform float uDirection;
       uniform float uHalo;
+      uniform vec3 uPlanetCenter;
+      uniform float uPlanetRadius;
       varying float vProgress;
+      varying vec3 vLocalPosition;
+
+      float planetOcclusion(vec3 p) {
+        float disk = 1.0 - smoothstep(uPlanetRadius * 0.88, uPlanetRadius * 1.06, length(p.xy - uPlanetCenter.xy));
+        return clamp(disk, 0.0, 1.0);
+      }
 
       void main() {
         float head = fract(uPhase + uDirection * uTime * uSpeed);
@@ -666,14 +737,18 @@ function createOrbitTrail(rx, ry, segments, radius, color, options) {
         float shard = fract(sin((vProgress + uPhase * 3.71) * 957.31) * 43758.5453);
         float breakup = mix(0.82, 1.34, shard);
         float core = tail * taper * breakup;
+        float angle = vProgress * 6.28318530718;
+        float foreground = smoothstep(0.08, 0.95, -sin(angle));
         float alpha = mix(core * 0.76 + headGlow * 0.68, core * 0.28, uHalo) * uOpacity;
+        alpha *= mix(0.72, 1.34, foreground);
+        alpha *= 1.0 - planetOcclusion(vLocalPosition) * 0.99;
 
         if (alpha < 0.006) {
           discard;
         }
 
         vec3 hot = mix(uColor, vec3(1.0, 0.9, 1.0), clamp(headGlow * 0.18 + (1.0 - uHalo) * 0.025, 0.0, 1.0));
-        float power = mix(2.35 + headGlow * 3.6, 1.02, uHalo);
+        float power = mix(2.35 + headGlow * 3.6, 1.02, uHalo) * mix(0.82, 1.2, foreground);
         gl_FragColor = vec4(hot * power, alpha);
       }
     `,
@@ -691,9 +766,9 @@ function createOrbitTrail(rx, ry, segments, radius, color, options) {
   return mesh;
 }
 
-function createOrbitDust(orbits, count) {
+function createOrbitDust(orbits, count, occlusion = createPlanetOcclusionUniforms()) {
   const orbitData = new Float32Array(count * 2);
-  const depthData = new Float32Array(count * 3);
+  const depthData = new Float32Array(count * 4);
   const colors = new Float32Array(count * 3);
   const sizes = new Float32Array(count);
   const phases = new Float32Array(count);
@@ -705,12 +780,14 @@ function createOrbitDust(orbits, count) {
     const orbit = orbits[Math.floor(Math.random() * orbits.length)];
     const i2 = i * 2;
     const i3 = i * 3;
+    const i4 = i * 4;
 
     orbitData[i2] = orbit.rx;
     orbitData[i2 + 1] = orbit.ry;
-    depthData[i3] = orbit.depth.z;
-    depthData[i3 + 1] = orbit.depth.warp;
-    depthData[i3 + 2] = orbit.depth.phase;
+    depthData[i4] = orbit.depth.z;
+    depthData[i4 + 1] = orbit.depth.warp;
+    depthData[i4 + 2] = orbit.depth.phase;
+    depthData[i4 + 3] = orbit.depth.radial;
     const clustered = Math.random() < 0.64;
     const clusterCenter =
       (Math.floor(Math.random() * 14) / 14 + orbit.gradientT * 0.11) * Math.PI * 2;
@@ -736,7 +813,7 @@ function createOrbitDust(orbits, count) {
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("aOrbit", new THREE.BufferAttribute(orbitData, 2));
-  geometry.setAttribute("aDepth", new THREE.BufferAttribute(depthData, 3));
+  geometry.setAttribute("aDepth", new THREE.BufferAttribute(depthData, 4));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
   geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
@@ -751,10 +828,12 @@ function createOrbitDust(orbits, count) {
     vertexColors: true,
     uniforms: {
       uTime: { value: 0 },
+      uPlanetCenter: occlusion.center,
+      uPlanetRadius: occlusion.radius,
     },
     vertexShader: `
       attribute vec2 aOrbit;
-      attribute vec3 aDepth;
+      attribute vec4 aDepth;
       attribute float aSize;
       attribute float aPhase;
       attribute float aSpeed;
@@ -762,13 +841,19 @@ function createOrbitDust(orbits, count) {
       attribute float aZ;
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vPlanetFade;
       uniform float uTime;
+      uniform vec3 uPlanetCenter;
+      uniform float uPlanetRadius;
 
       void main() {
         float angle = aPhase + uTime * aSpeed;
+        float radial =
+          sin(angle * 5.0 + aDepth.z) * aDepth.w +
+          sin(angle * 9.0 - aDepth.z * 0.7) * aDepth.w * 0.45;
         vec3 p = vec3(
-          cos(angle) * (aOrbit.x + aOffset),
-          sin(angle) * (aOrbit.y + aOffset * 0.42),
+          cos(angle) * (aOrbit.x + aOffset + radial),
+          sin(angle) * (aOrbit.y + aOffset * 0.42 + radial * 0.42),
           aDepth.x +
             sin(angle * 2.0 + aDepth.z) * aDepth.y +
             sin(angle * 3.2 - aDepth.z * 0.6) * aDepth.y * 0.35 +
@@ -779,12 +864,16 @@ function createOrbitDust(orbits, count) {
         gl_Position = projectionMatrix * mvPosition;
         gl_PointSize = aSize * (100.0 / max(0.1, -mvPosition.z));
         vColor = color;
-        vAlpha = 0.55 + sin(uTime * 2.0 + aPhase) * 0.24;
+        float foreground = smoothstep(0.08, 0.95, -sin(angle));
+        float disk = 1.0 - smoothstep(uPlanetRadius * 0.9, uPlanetRadius * 1.06, length(p.xy - uPlanetCenter.xy));
+        vPlanetFade = 1.0 - clamp(disk, 0.0, 1.0);
+        vAlpha = (0.55 + sin(uTime * 2.0 + aPhase) * 0.24) * mix(0.78, 1.24, foreground);
       }
     `,
     fragmentShader: `
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vPlanetFade;
 
       void main() {
         vec2 uv = gl_PointCoord - 0.5;
@@ -792,7 +881,7 @@ function createOrbitDust(orbits, count) {
         float core = smoothstep(0.5, 0.02, dist);
         float rayX = smoothstep(0.45, 0.0, abs(uv.x)) * smoothstep(0.5, 0.02, abs(uv.y));
         float rayY = smoothstep(0.45, 0.0, abs(uv.y)) * smoothstep(0.5, 0.02, abs(uv.x));
-        float alpha = max(core, (rayX + rayY) * 0.18) * vAlpha;
+        float alpha = max(core, (rayX + rayY) * 0.18) * vAlpha * vPlanetFade;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(vColor * 3.05, alpha * 1.28);
       }
@@ -806,9 +895,9 @@ function createOrbitDust(orbits, count) {
   };
 }
 
-function createTrailSparks(trails, count) {
+function createTrailSparks(trails, count, occlusion = createPlanetOcclusionUniforms()) {
   const orbitData = new Float32Array(count * 2);
-  const depthData = new Float32Array(count * 3);
+  const depthData = new Float32Array(count * 4);
   const colors = new Float32Array(count * 3);
   const phases = new Float32Array(count);
   const speeds = new Float32Array(count);
@@ -823,6 +912,7 @@ function createTrailSparks(trails, count) {
     const runner = trails[Math.floor(Math.random() * trails.length)].userData.runner;
     const i2 = i * 2;
     const i3 = i * 3;
+    const i4 = i * 4;
     const color = runner.orbit.color
       .clone()
       .lerp(new THREE.Color("#ffffff"), Math.random() * 0.34)
@@ -830,25 +920,26 @@ function createTrailSparks(trails, count) {
 
     orbitData[i2] = runner.orbit.rx;
     orbitData[i2 + 1] = runner.orbit.ry;
-    depthData[i3] = runner.orbit.depth.z + runner.layerZ;
-    depthData[i3 + 1] = runner.orbit.depth.warp;
-    depthData[i3 + 2] = runner.orbit.depth.phase;
+    depthData[i4] = runner.orbit.depth.z + runner.layerZ;
+    depthData[i4 + 1] = runner.orbit.depth.warp;
+    depthData[i4 + 2] = runner.orbit.depth.phase;
+    depthData[i4 + 3] = runner.orbit.depth.radial;
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
     colors[i3 + 2] = color.b;
     phases[i] = runner.phase;
     speeds[i] = runner.speed * (0.88 + Math.random() * 0.22);
     directions[i] = runner.direction;
-    lags[i] = Math.pow(Math.random(), 3.1) * 0.58;
-    spreads[i] = (Math.random() - 0.5) * (0.1 + Math.random() * 0.32);
-    sizes[i] = 0.45 + Math.random() * 2.35;
+    lags[i] = Math.pow(Math.random(), 2.45) * 0.72;
+    spreads[i] = (Math.random() - 0.5) * (0.14 + Math.random() * 0.42);
+    sizes[i] = 0.55 + Math.random() * 3.05;
     zOffsets[i] = (Math.random() - 0.5) * 0.3;
     seeds[i] = Math.random() * Math.PI * 2;
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("aOrbit", new THREE.BufferAttribute(orbitData, 2));
-  geometry.setAttribute("aDepth", new THREE.BufferAttribute(depthData, 3));
+  geometry.setAttribute("aDepth", new THREE.BufferAttribute(depthData, 4));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
   geometry.setAttribute("aSpeed", new THREE.BufferAttribute(speeds, 1));
@@ -866,10 +957,12 @@ function createTrailSparks(trails, count) {
     vertexColors: true,
     uniforms: {
       uTime: { value: 0 },
+      uPlanetCenter: occlusion.center,
+      uPlanetRadius: occlusion.radius,
     },
     vertexShader: `
       attribute vec2 aOrbit;
-      attribute vec3 aDepth;
+      attribute vec4 aDepth;
       attribute float aPhase;
       attribute float aSpeed;
       attribute float aDirection;
@@ -880,16 +973,22 @@ function createTrailSparks(trails, count) {
       attribute float aSeed;
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vPlanetFade;
       uniform float uTime;
+      uniform vec3 uPlanetCenter;
+      uniform float uPlanetRadius;
 
       void main() {
         float head = (aPhase + uTime * aSpeed * aDirection) * 6.28318530718;
         float lag = aLag * 6.28318530718;
         float angle = head - lag * aDirection + sin(aSeed + uTime * 0.9) * 0.018;
         float flutter = sin(aSeed * 2.7 + uTime * 1.6) * aSpread;
+        float radial =
+          sin(angle * 5.0 + aDepth.z) * aDepth.w +
+          sin(angle * 9.0 - aDepth.z * 0.7) * aDepth.w * 0.45;
         vec3 p = vec3(
-          cos(angle) * (aOrbit.x + flutter),
-          sin(angle) * (aOrbit.y + flutter * 0.55),
+          cos(angle) * (aOrbit.x + flutter + radial),
+          sin(angle) * (aOrbit.y + flutter * 0.55 + radial * 0.42),
           aDepth.x +
             sin(angle * 2.0 + aDepth.z) * aDepth.y +
             sin(angle * 3.2 - aDepth.z * 0.6) * aDepth.y * 0.35 +
@@ -900,18 +999,25 @@ function createTrailSparks(trails, count) {
         gl_Position = projectionMatrix * mvPosition;
         gl_PointSize = aSize * (122.0 / max(0.1, -mvPosition.z));
         vColor = color;
-        vAlpha = pow(1.0 - clamp(aLag / 0.62, 0.0, 1.0), 1.7) * (0.7 + sin(uTime * 4.0 + aSeed) * 0.24);
+        float foreground = smoothstep(0.08, 0.95, -sin(angle));
+        float disk = 1.0 - smoothstep(uPlanetRadius * 0.9, uPlanetRadius * 1.06, length(p.xy - uPlanetCenter.xy));
+        vPlanetFade = 1.0 - clamp(disk, 0.0, 1.0);
+        vAlpha =
+          pow(1.0 - clamp(aLag / 0.78, 0.0, 1.0), 1.35) *
+          (0.86 + sin(uTime * 4.0 + aSeed) * 0.24) *
+          mix(0.78, 1.36, foreground);
       }
     `,
     fragmentShader: `
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vPlanetFade;
 
       void main() {
         vec2 uv = gl_PointCoord - 0.5;
         float core = smoothstep(0.5, 0.02, length(uv));
         if (core < 0.01) discard;
-        gl_FragColor = vec4(vColor * 3.55, core * vAlpha);
+        gl_FragColor = vec4(vColor * 4.35, core * vAlpha * vPlanetFade * 1.12);
       }
     `,
   });
@@ -1291,18 +1397,20 @@ function createOrbitDepth(index, count) {
   return {
     z: centered * 0.082 + Math.sin(index * 1.37) * 0.13,
     warp: 0.028 + outer * 0.095 + Math.sin(index * 0.83) * 0.01,
+    radial: 0.012 + outer * 0.046,
     phase: Math.random() * Math.PI * 2,
   };
 }
 
 function flatOrbitDepth() {
-  return { z: 0, warp: 0, phase: 0 };
+  return { z: 0, warp: 0, radial: 0, phase: 0 };
 }
 
 function offsetDepth(depth, zOffset) {
   return {
     z: depth.z + zOffset,
     warp: depth.warp,
+    radial: depth.radial,
     phase: depth.phase,
   };
 }
@@ -1313,6 +1421,20 @@ function orbitDepthAt(angle, depth) {
     Math.sin(angle * 2.0 + depth.phase) * depth.warp +
     Math.sin(angle * 3.2 - depth.phase * 0.6) * depth.warp * 0.35
   );
+}
+
+function orbitRadialAt(angle, depth) {
+  return (
+    Math.sin(angle * 5 + depth.phase) * depth.radial +
+    Math.sin(angle * 9 - depth.phase * 0.7) * depth.radial * 0.45
+  );
+}
+
+function createPlanetOcclusionUniforms() {
+  return {
+    center: { value: new THREE.Vector3(3.35, 0.92, 0.02) },
+    radius: { value: 1.58 },
+  };
 }
 
 function readPalette(rawPalette, themeName) {
