@@ -132,6 +132,9 @@ camera.add(nebula.mesh);
 const backdrop = createBackdrop(settings);
 scene.add(backdrop.points);
 
+const meteors = createMeteors(settings);
+for (const m of meteors.meshes) scene.add(m);
+
 const system = new THREE.Group();
 system.rotation.x = -0.015;
 system.rotation.y = -0.035;
@@ -167,6 +170,7 @@ function animate(timestamp = 0) {
   const planetPulseScale = 1 + (planetPulse - 0.5) * 0.026;
 
   planet.group.scale.setScalar(planetBaseScale * planetPulseScale);
+  bloomEffect.intensity = settings.bloomStrength * (0.96 + planetPulse * 0.08);
   orbitSystem.occlusion.radius.value =
     (1.58 * planet.group.scale.x) / orbitSystem.group.scale.x;
 
@@ -174,6 +178,7 @@ function animate(timestamp = 0) {
   orbitSystem.dust.material.uniforms.uTime.value = time;
   orbitSystem.sparkCloud.material.uniforms.uTime.value = time;
   backdrop.material.uniforms.uTime.value = time * 0.45;
+  updateMeteors(meteors, cameraTime);
   nebula.material.uniforms.uTime.value = time * 0.06;
   planet.surface.material.uniforms.uTime.value = time;
   planet.surface.material.uniforms.uPulse.value = planetPulse;
@@ -193,6 +198,7 @@ function animate(timestamp = 0) {
   planet.limbBokeh.material.uniforms.uTime.value = time;
   planet.rayFan.material.rotation = -0.035 + Math.sin(time * 0.12) * 0.018;
   planet.rayFan.material.opacity = (0.36 + Math.sin(time * 0.16) * 0.035) * (0.92 + planetPulse * 0.18);
+  planet.pinLights.material.uniforms.uTime.value = time;
 
   for (const trail of orbitSystem.allTrails) {
     trail.material.uniforms.uTime.value = time;
@@ -611,9 +617,14 @@ function createBackdrop({ backdrop, palette }) {
 
       void main() {
         vec2 uv = gl_PointCoord - 0.5;
-        float core = smoothstep(0.48, 0.0, length(uv));
-        if (core < 0.01) discard;
-        gl_FragColor = vec4(vColor, core * vAlpha);
+        float d = length(uv);
+        float core = smoothstep(0.48, 0.0, d);
+        float spikeX = smoothstep(0.42, 0.0, abs(uv.y)) * smoothstep(0.5, 0.06, abs(uv.x));
+        float spikeY = smoothstep(0.42, 0.0, abs(uv.x)) * smoothstep(0.5, 0.06, abs(uv.y));
+        float spikes = (spikeX + spikeY) * 0.22 * smoothstep(0.5, 0.12, d);
+        float alpha = max(core, spikes) * vAlpha;
+        if (alpha < 0.01) discard;
+        gl_FragColor = vec4(vColor, alpha);
       }
     `,
     vertexColors: true,
@@ -627,6 +638,109 @@ function createBackdrop({ backdrop, palette }) {
     material,
     points,
   };
+}
+
+function createMeteors({ palette }) {
+  const poolSize = 3;
+  const meshes = [];
+  const slots = [];
+
+  for (let i = 0; i < poolSize; i += 1) {
+    const color = samplePalette(palette, Math.random());
+    const geometry = new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(1, 0, 0),
+    ]);
+    const material = new THREE.ShaderMaterial({
+      transparent: true,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      uniforms: {
+        uColor: { value: color.clone().lerp(WHITE, 0.4) },
+        uProgress: { value: -1 },
+        uOpacity: { value: 0 },
+      },
+      vertexShader: `
+        varying float vT;
+        void main() {
+          vT = position.x;
+          gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+        }
+      `,
+      fragmentShader: `
+        uniform vec3 uColor;
+        uniform float uProgress;
+        uniform float uOpacity;
+        varying float vT;
+        void main() {
+          float head = uProgress;
+          float behind = head - vT;
+          if (behind < 0.0 || behind > 0.35) discard;
+          float fade = smoothstep(0.35, 0.0, behind) * smoothstep(0.0, 0.04, behind);
+          float alpha = fade * uOpacity;
+          if (alpha < 0.005) discard;
+          vec3 hot = mix(uColor, vec3(1.0), smoothstep(0.04, 0.0, behind) * 0.6);
+          gl_FragColor = vec4(hot * 2.2, alpha);
+        }
+      `,
+    });
+    const mesh = new THREE.Mesh(geometry, material);
+    mesh.visible = false;
+    mesh.frustumCulled = false;
+    meshes.push(mesh);
+    slots.push({ active: false, startTime: 0, duration: 0 });
+  }
+
+  return {
+    meshes,
+    slots,
+    nextSpawn: 12 + Math.random() * 18,
+  };
+}
+
+function updateMeteors(meteors, time) {
+  for (let i = 0; i < meteors.slots.length; i += 1) {
+    const slot = meteors.slots[i];
+    const mesh = meteors.meshes[i];
+    if (slot.active) {
+      const elapsed = time - slot.startTime;
+      const progress = elapsed / slot.duration;
+      if (progress > 1.35) {
+        slot.active = false;
+        mesh.visible = false;
+        mesh.material.uniforms.uOpacity.value = 0;
+      } else {
+        mesh.material.uniforms.uProgress.value = progress;
+        mesh.material.uniforms.uOpacity.value = smoothStep01(1 - Math.max(0, progress - 0.8) / 0.55);
+      }
+    }
+  }
+
+  if (time >= meteors.nextSpawn) {
+    const freeSlot = meteors.slots.findIndex((s) => !s.active);
+    if (freeSlot >= 0) {
+      const mesh = meteors.meshes[freeSlot];
+      const slot = meteors.slots[freeSlot];
+      const x = (Math.random() - 0.5) * 38;
+      const y = (Math.random() - 0.3) * 18;
+      const z = -36 - Math.random() * 14;
+      const angle = -0.6 + Math.random() * 0.35;
+      const length = 4.5 + Math.random() * 7;
+      const dx = Math.cos(angle) * length;
+      const dy = Math.sin(angle) * length;
+      const posAttr = mesh.geometry.attributes.position;
+      posAttr.setXYZ(0, x, y, z);
+      posAttr.setXYZ(1, x + dx, y + dy, z);
+      posAttr.needsUpdate = true;
+      slot.active = true;
+      slot.startTime = time;
+      slot.duration = 0.3 + Math.random() * 0.25;
+      mesh.visible = true;
+      mesh.material.uniforms.uProgress.value = 0;
+      mesh.material.uniforms.uOpacity.value = 0.6 + Math.random() * 0.4;
+    }
+    meteors.nextSpawn = time + 18 + Math.random() * 28;
+  }
 }
 
 function createOrbitSystem({ dust, sparkDust, segments, palette }) {
@@ -1577,6 +1691,8 @@ function createPlanetPinLights(palette) {
   const count = 440;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
+  const phases = new Float32Array(count);
+  const speeds = new Float32Array(count);
 
   for (let i = 0; i < count; i += 1) {
     const i3 = i * 3;
@@ -1593,23 +1709,58 @@ function createPlanetPinLights(palette) {
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
     colors[i3 + 2] = color.b;
+
+    phases[i] = Math.random() * Math.PI * 2;
+    speeds[i] = 0.8 + Math.random() * 2.4;
   }
 
   const geometry = new THREE.BufferGeometry();
   geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+  geometry.setAttribute("aSpeed", new THREE.BufferAttribute(speeds, 1));
 
-  return new THREE.Points(
-    geometry,
-    new THREE.PointsMaterial({
-      size: 0.012,
-      transparent: true,
-      opacity: 0.34,
-      vertexColors: true,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
-  );
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    vertexColors: true,
+    uniforms: {
+      uTime: { value: 0 },
+      uSize: { value: 0.012 },
+    },
+    vertexShader: `
+      attribute float aPhase;
+      attribute float aSpeed;
+      varying vec3 vColor;
+      varying float vAlpha;
+      uniform float uTime;
+      uniform float uSize;
+
+      void main() {
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_Position = projectionMatrix * mvPosition;
+        gl_PointSize = uSize * (300.0 / max(1.0, -mvPosition.z));
+        vColor = color;
+        float flicker = sin(uTime * aSpeed + aPhase);
+        float blink = smoothstep(-0.15, 0.35, flicker);
+        vAlpha = 0.34 * (0.22 + blink * 0.78);
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        float d = length(gl_PointCoord - 0.5);
+        float core = smoothstep(0.5, 0.0, d);
+        if (core < 0.01) discard;
+        gl_FragColor = vec4(vColor, core * vAlpha);
+      }
+    `,
+  });
+
+  return new THREE.Points(geometry, material);
 }
 
 function createStarTexture() {
