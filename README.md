@@ -1,6 +1,6 @@
 # PurplePlanet
 
-Lightweight Three.js orbital wallpaper for Lively Wallpaper, Wallpaper Engine, or a local browser window. It renders a fixed violet planet and orbital plane while colorful star sprites travel along the lanes, leaving glowing comet-like trails behind them.
+Lightweight Three.js orbital wallpaper for Lively Wallpaper, Wallpaper Engine, or a local browser window. It renders a fixed rim-lit planet and orbital plane while colorful light heads travel along the lanes, leaving glowing comet-like trails and particle wakes behind them.
 
 ## Run locally
 
@@ -16,10 +16,13 @@ Then open the local URL printed by Vite.
 Use URL parameters when adding it to a wallpaper app:
 
 - `?quality=low` for the lightest mode.
-- `?quality=balanced` for the default.
+- `?quality=balanced` for a lighter everyday mode.
 - `?quality=high` for denser sparkle.
+- `?quality=cinematic` for the default high-fidelity mode with denser particles and stronger postprocessing.
 - `?speed=0.7` for slower drift.
 - `?pixelRatio=1` to reduce GPU load on high-DPI displays.
+- `?bloom=0.5`, `?bloomRadius=0.44`, `?bloomThreshold=0.62`, or `?exposure=0.82` to tune the cinematic glow.
+- `?cameraSway=0` disables the slow handheld camera drift. `?cameraSway=1.5` makes it more noticeable.
 - `?theme=nebula` for the default blue-to-pink gradient.
 - `?theme=aurora`, `?theme=ultraviolet`, `?theme=plasma`, or `?theme=candy` for alternate built-in palettes.
 - `?palette=245dff,5146ff,8c35ff,f725d6,ff2f8a` for a custom gradient. Colors are ordered from outside rings to inside rings.
