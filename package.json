@@ -10,6 +10,7 @@
     "verify": "node scripts/verify.mjs"
   },
   "dependencies": {
+    "postprocessing": "^6.36.7",
     "three": "^0.164.1"
   },
   "devDependencies": {

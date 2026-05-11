@@ -1,8 +1,12 @@
 import * as THREE from "three";
-import { EffectComposer } from "three/examples/jsm/postprocessing/EffectComposer.js";
-import { OutputPass } from "three/examples/jsm/postprocessing/OutputPass.js";
-import { RenderPass } from "three/examples/jsm/postprocessing/RenderPass.js";
-import { UnrealBloomPass } from "three/examples/jsm/postprocessing/UnrealBloomPass.js";
+import {
+  BloomEffect,
+  EffectComposer,
+  EffectPass,
+  RenderPass,
+  ToneMappingEffect,
+  ToneMappingMode,
+} from "postprocessing";
 import "./styles.css";
 
 const canvas = document.querySelector("#wallpaper");
@@ -56,20 +60,27 @@ window.PurplePlanet = {
   },
   stats: runtimeStats,
 };
-renderer.toneMapping = THREE.ACESFilmicToneMapping;
-renderer.toneMappingExposure = settings.exposure;
+renderer.toneMapping = THREE.NoToneMapping;
 
 scene.add(camera);
-const composer = new EffectComposer(renderer);
+const bloomEffect = new BloomEffect({
+  intensity: settings.bloomStrength,
+  radius: settings.bloomRadius,
+  luminanceThreshold: settings.bloomThreshold,
+  luminanceSmoothing: 0.15,
+  mipmapBlur: true,
+});
+const toneMappingEffect = new ToneMappingEffect({
+  mode: ToneMappingMode.ACES_FILMIC,
+  resolution: 256,
+  whitePoint: 4.0,
+});
+toneMappingEffect.exposure = settings.exposure;
+const composer = new EffectComposer(renderer, {
+  frameBufferType: THREE.HalfFloatType,
+});
 composer.addPass(new RenderPass(scene, camera));
-const bloomPass = new UnrealBloomPass(
-  new THREE.Vector2(1, 1),
-  settings.bloomStrength,
-  settings.bloomRadius,
-  settings.bloomThreshold,
-);
-composer.addPass(bloomPass);
-composer.addPass(new OutputPass());
+composer.addPass(new EffectPass(camera, bloomEffect, toneMappingEffect));
 
 class OrbitCurve extends THREE.Curve {
   constructor(rx, ry, start, length, depth = flatOrbitDepth()) {
@@ -277,9 +288,7 @@ function resize() {
   const pixelRatio = Math.min(window.devicePixelRatio || 1, settings.pixelRatio);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(width, height, false);
-  composer.setPixelRatio(pixelRatio);
-  composer.setSize(width, height);
-  bloomPass.setSize(width, height);
+  composer.setSize(width, height, false);
 }
 
 function handleVisibility() {
