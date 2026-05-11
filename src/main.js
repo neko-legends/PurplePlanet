@@ -127,9 +127,10 @@ function animate() {
       Math.sin(angle) * (orbit.ry + radial * 0.42),
       orbitDepthAt(angle, orbit.depth) + sprite.userData.layerZ,
     );
+    const occlusionCenter = orbitSystem.occlusion.center.value;
     const distanceToPlanet = Math.hypot(
-      sprite.position.x - planet.group.position.x,
-      sprite.position.y - planet.group.position.y,
+      sprite.position.x - occlusionCenter.x,
+      sprite.position.y - occlusionCenter.y,
     );
     const planetFade = clamp((distanceToPlanet - orbitSystem.occlusion.radius.value * 0.88) / 0.28, 0, 1);
     const foreground = clamp(-Math.sin(angle), 0, 1);
@@ -174,8 +175,10 @@ function resize() {
   );
   planet.group.scale.setScalar(portraitLayout ? (camera.aspect < 0.58 ? 0.82 : 0.92) : 1);
   orbitSystem.group.scale.setScalar(portraitLayout ? 0.94 : 1.23);
-  orbitSystem.occlusion.center.value.copy(planet.group.position);
-  orbitSystem.occlusion.radius.value = 1.58 * planet.group.scale.x;
+  orbitSystem.group.position.copy(planet.group.position);
+  orbitSystem.occlusion.center.value.set(0, 0, 0);
+  orbitSystem.occlusion.radius.value =
+    (1.58 * planet.group.scale.x) / orbitSystem.group.scale.x;
 
   const pixelRatio = Math.min(window.devicePixelRatio || 1, settings.pixelRatio);
   renderer.setPixelRatio(pixelRatio);
@@ -1432,7 +1435,7 @@ function orbitRadialAt(angle, depth) {
 
 function createPlanetOcclusionUniforms() {
   return {
-    center: { value: new THREE.Vector3(3.35, 0.92, 0.02) },
+    center: { value: new THREE.Vector3(0, 0, 0) },
     radius: { value: 1.58 },
   };
 }
