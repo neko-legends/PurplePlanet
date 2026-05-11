@@ -36,6 +36,23 @@ const THEMES = {
   candy: ["#45dfff", "#5a7dff", "#ad5cff", "#ff66c7", "#ffd46f"],
 };
 const settings = readSettings();
+const runtimeStats = {
+  targetFps: settings.fps,
+  renderedFrames: 0,
+  skippedFrames: 0,
+  measuredFps: 0,
+  lastFrameMs: 0,
+  sampleStartedAt: performance.now(),
+  sampleFrames: 0,
+};
+window.PurplePlanet = {
+  settings: {
+    quality: settings.quality,
+    fps: settings.fps,
+    pixelRatio: settings.pixelRatio,
+  },
+  stats: runtimeStats,
+};
 renderer.toneMapping = THREE.ACESFilmicToneMapping;
 renderer.toneMappingExposure = settings.exposure;
 
@@ -91,14 +108,19 @@ system.add(planet.group);
 
 let frameId = 0;
 let planetBaseScale = 1;
+let lastRenderTimestamp = 0;
 
 resize();
 window.addEventListener("resize", resize, { passive: true });
 document.addEventListener("visibilitychange", handleVisibility, false);
 animate();
 
-function animate() {
+function animate(timestamp = 0) {
   frameId = requestAnimationFrame(animate);
+
+  if (!shouldRenderFrame(timestamp)) {
+    return;
+  }
 
   const elapsed = clock.getElapsedTime();
   const motionScale = reducedMotion.matches ? 0.18 : 1;
@@ -174,6 +196,41 @@ function animate() {
 
   updateCameraSway(cameraTime);
   composer.render();
+  recordRenderedFrame(timestamp);
+}
+
+function shouldRenderFrame(timestamp) {
+  if (settings.frameInterval <= 0 || timestamp <= 0) {
+    lastRenderTimestamp = timestamp;
+    return true;
+  }
+
+  if (lastRenderTimestamp === 0) {
+    lastRenderTimestamp = timestamp;
+    return true;
+  }
+
+  const elapsed = timestamp - lastRenderTimestamp;
+  if (elapsed < settings.frameInterval) {
+    runtimeStats.skippedFrames += 1;
+    return false;
+  }
+
+  lastRenderTimestamp = timestamp - (elapsed % settings.frameInterval);
+  return true;
+}
+
+function recordRenderedFrame(timestamp) {
+  runtimeStats.renderedFrames += 1;
+  runtimeStats.sampleFrames += 1;
+  runtimeStats.lastFrameMs = timestamp || performance.now();
+
+  const elapsed = runtimeStats.lastFrameMs - runtimeStats.sampleStartedAt;
+  if (elapsed >= 1000) {
+    runtimeStats.measuredFps = (runtimeStats.sampleFrames * 1000) / elapsed;
+    runtimeStats.sampleFrames = 0;
+    runtimeStats.sampleStartedAt = runtimeStats.lastFrameMs;
+  }
 }
 
 function resize() {
@@ -224,11 +281,13 @@ function handleVisibility() {
   if (document.hidden) {
     cancelAnimationFrame(frameId);
     frameId = 0;
+    lastRenderTimestamp = 0;
     return;
   }
 
   if (!frameId) {
     clock.getDelta();
+    lastRenderTimestamp = 0;
     animate();
   }
 }
@@ -276,6 +335,7 @@ function readSettings() {
       dust: 900,
       sparkDust: 900,
       segments: 176,
+      fps: 24,
       exposure: 0.86,
       bloomStrength: 0.28,
       bloomRadius: 0.32,
@@ -287,6 +347,7 @@ function readSettings() {
       dust: 2600,
       sparkDust: 3200,
       segments: 260,
+      fps: 30,
       exposure: 0.9,
       bloomStrength: 0.46,
       bloomRadius: 0.42,
@@ -298,6 +359,7 @@ function readSettings() {
       dust: 5200,
       sparkDust: 6800,
       segments: 340,
+      fps: 30,
       exposure: 0.94,
       bloomStrength: 0.62,
       bloomRadius: 0.52,
@@ -309,6 +371,7 @@ function readSettings() {
       dust: 36000,
       sparkDust: 52000,
       segments: 420,
+      fps: 30,
       exposure: 0.82,
       bloomStrength: 0.64,
       bloomRadius: 0.58,
@@ -319,11 +382,15 @@ function readSettings() {
   const selected = qualityMap[quality] || qualityMap.balanced;
   const themeName = params.get("theme") || "nebula";
   const palette = readPalette(params.get("palette"), themeName);
+  const fps = clamp(Number(params.get("fps") ?? selected.fps), 0, 144);
 
   return {
     ...selected,
+    quality,
     palette,
     themeName,
+    fps,
+    frameInterval: fps > 0 ? 1000 / fps : 0,
     speed: clamp(Number(params.get("speed") || 1), 0.2, 2),
     cameraSway: clamp(Number(params.get("cameraSway") || 1), 0, 3),
     exposure: clamp(Number(params.get("exposure") || selected.exposure), 0.6, 1.8),

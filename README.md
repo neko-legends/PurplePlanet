@@ -19,6 +19,7 @@ Use URL parameters when adding it to a wallpaper app:
 - `?quality=balanced` for a lighter everyday mode.
 - `?quality=high` for denser sparkle.
 - `?quality=cinematic` for the default high-fidelity mode with denser particles and stronger postprocessing.
+- `?fps=30` caps rendering for lower GPU use. Use `?fps=24` for a lighter wallpaper or `?fps=0` to render every display refresh.
 - `?speed=0.7` for slower drift.
 - `?pixelRatio=1` to reduce GPU load on high-DPI displays.
 - `?bloom=0.5`, `?bloomRadius=0.44`, `?bloomThreshold=0.62`, or `?exposure=0.82` to tune the cinematic glow.
@@ -30,7 +31,7 @@ Use URL parameters when adding it to a wallpaper app:
 Example:
 
 ```text
-http://127.0.0.1:5173/?quality=balanced&speed=0.85&pixelRatio=1.2&theme=nebula
+http://127.0.0.1:5173/?quality=balanced&fps=30&speed=0.85&pixelRatio=1.2&theme=nebula
 ```
 
 Custom outside-to-inside palette:
