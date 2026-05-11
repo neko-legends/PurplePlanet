@@ -111,6 +111,9 @@ function animate() {
   planet.surface.material.uniforms.uTime.value = time;
   planet.glow.material.uniforms.uTime.value = time;
   planet.aura.material.rotation = time * 0.025;
+  planet.softHalo.rotation.z = time * 0.006;
+  planet.limbBokeh.rotation.z = -time * 0.009;
+  planet.limbBokeh.material.uniforms.uTime.value = time;
   planet.rayFan.material.rotation = -0.035 + Math.sin(time * 0.12) * 0.018;
   planet.rayFan.material.opacity = 0.38 + Math.sin(time * 0.16) * 0.035;
 
@@ -1114,17 +1117,8 @@ function createPlanet({ palette }) {
   rayFan.position.set(0.48, 0.2, -1.15);
   rayFan.scale.set(7.8, 5.2, 1);
 
-  const haloRing = new THREE.Mesh(
-    new THREE.TorusGeometry(1.88, 0.01, 8, 192),
-    new THREE.MeshBasicMaterial({
-      color: inner.clone().lerp(new THREE.Color("#ffffff"), 0.16),
-      transparent: true,
-      opacity: 0.2,
-      blending: THREE.AdditiveBlending,
-      depthWrite: false,
-    }),
-  );
-  haloRing.position.z = -0.16;
+  const softHalo = createPlanetSoftHalo(inner, mid, outer);
+  const limbBokeh = createPlanetLimbBokeh(palette, planetRadius);
 
   const surface = new THREE.Mesh(
     new THREE.SphereGeometry(planetRadius, 56, 36),
@@ -1158,12 +1152,12 @@ function createPlanet({ palette }) {
         void main() {
           float facing = max(dot(vNormal, vView), 0.0);
           float rimBase = 1.0 - facing;
-          float rim = smoothstep(0.68, 0.97, rimBase);
+          float rim = smoothstep(0.79, 1.0, rimBase);
           float litArc = smoothstep(-0.18, 0.62, vNormal.y * 0.52 + vNormal.x * 0.34);
           float shade = smoothstep(-0.8, 0.85, vNormal.y * 0.6 + vNormal.x * 0.25);
           float pulse = sin((vPosition.y + vPosition.x) * 4.0 + uTime * 0.35) * 0.0025;
           vec3 core = mix(vec3(0.00004, 0.00002, 0.00012), uShadeColor * 0.018, shade);
-          vec3 edge = uRimColor * rim * litArc * 3.65;
+          vec3 edge = uRimColor * rim * litArc * 2.15;
           gl_FragColor = vec4(core + edge + pulse, 1.0);
         }
       `,
@@ -1171,7 +1165,7 @@ function createPlanet({ palette }) {
   );
 
   const glow = new THREE.Mesh(
-    new THREE.SphereGeometry(planetRadius * 1.12, 56, 36),
+    new THREE.SphereGeometry(planetRadius * 1.07, 56, 36),
     new THREE.ShaderMaterial({
       transparent: true,
       depthWrite: false,
@@ -1201,26 +1195,152 @@ function createPlanet({ palette }) {
         varying vec3 vView;
 
         void main() {
-          float rim = pow(1.0 - max(dot(vNormal, vView), 0.0), 3.35);
+          float rim = pow(1.0 - max(dot(vNormal, vView), 0.0), 2.7);
           vec3 color = mix(uInnerColor, uOuterColor, sin(uTime * 0.25) * 0.5 + 0.5);
-          gl_FragColor = vec4(color * 2.35, rim * 0.18);
+          gl_FragColor = vec4(color * 2.0, rim * 0.07);
         }
       `,
     }),
   );
 
   const pinLights = createPlanetPinLights(palette);
-  group.add(rayFan, aura, haloRing, glow, surface, pinLights);
+  group.add(rayFan, aura, softHalo, glow, limbBokeh, surface, pinLights);
 
   return {
     group,
     rayFan,
     aura,
-    haloRing,
+    softHalo,
+    haloRing: softHalo,
+    limbBokeh,
     glow,
     surface,
     pinLights,
   };
+}
+
+function createPlanetSoftHalo(inner, mid, outer) {
+  const group = new THREE.Group();
+
+  const backVeil = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: createPlanetHaloTexture(),
+      color: outer.clone().lerp(mid, 0.45).lerp(new THREE.Color("#ffffff"), 0.08),
+      transparent: true,
+      opacity: 0.018,
+      blending: THREE.AdditiveBlending,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
+  backVeil.position.set(0.06, 0.04, -0.38);
+  backVeil.scale.set(4.75, 4.18, 1);
+
+  const hotEdge = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: createPlanetHaloTexture(),
+      color: inner.clone().lerp(new THREE.Color("#ffffff"), 0.18),
+      transparent: true,
+      opacity: 0.035,
+      blending: THREE.AdditiveBlending,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
+  hotEdge.position.set(0.03, 0.02, -0.24);
+  hotEdge.scale.set(4.18, 3.72, 1);
+  hotEdge.material.rotation = -0.08;
+
+  group.add(backVeil, hotEdge);
+  return group;
+}
+
+function createPlanetLimbBokeh(palette, planetRadius) {
+  const count = 96;
+  const positions = new Float32Array(count * 3);
+  const colors = new Float32Array(count * 3);
+  const sizes = new Float32Array(count);
+  const phases = new Float32Array(count);
+  const alphas = new Float32Array(count);
+
+  for (let i = 0; i < count; i += 1) {
+    const i3 = i * 3;
+    const cluster = Math.random();
+    const angle =
+      cluster < 0.58
+        ? -0.28 + Math.random() * 2.42
+        : Math.random() * Math.PI * 2;
+    const radius = planetRadius * (1.02 + Math.pow(Math.random(), 0.72) * 0.36);
+    const vertical = 0.92 + Math.random() * 0.14;
+    const haze = Math.random() < 0.36 ? 0.22 + Math.random() * 0.28 : 0;
+
+    positions[i3] = Math.cos(angle) * (radius + haze);
+    positions[i3 + 1] = Math.sin(angle) * radius * vertical + (Math.random() - 0.5) * 0.08;
+    positions[i3 + 2] = -0.34 - Math.random() * 0.72;
+
+    const color = samplePalette(palette, 0.54 + Math.random() * 0.46)
+      .lerp(new THREE.Color("#ffffff"), 0.12 + Math.random() * 0.28)
+      .multiplyScalar(1.45);
+    colors[i3] = color.r;
+    colors[i3 + 1] = color.g;
+    colors[i3 + 2] = color.b;
+
+    sizes[i] = Math.random() < 0.18 ? 0.74 + Math.random() * 0.72 : 0.26 + Math.random() * 0.48;
+    phases[i] = Math.random() * Math.PI * 2;
+    alphas[i] = 0.08 + Math.random() * 0.28;
+  }
+
+  const geometry = new THREE.BufferGeometry();
+  geometry.setAttribute("position", new THREE.BufferAttribute(positions, 3));
+  geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
+  geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
+  geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+  geometry.setAttribute("aAlpha", new THREE.BufferAttribute(alphas, 1));
+
+  const material = new THREE.ShaderMaterial({
+    transparent: true,
+    depthTest: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending,
+    uniforms: {
+      uTime: { value: 0 },
+    },
+    vertexShader: `
+      attribute vec3 color;
+      attribute float aSize;
+      attribute float aPhase;
+      attribute float aAlpha;
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      uniform float uTime;
+
+      void main() {
+        float shimmer = 0.78 + sin(uTime * 0.65 + aPhase) * 0.22;
+        vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
+        gl_PointSize = aSize * (270.0 / max(5.0, -mvPosition.z)) * shimmer;
+        gl_Position = projectionMatrix * mvPosition;
+        vColor = color;
+        vAlpha = aAlpha * shimmer;
+      }
+    `,
+    fragmentShader: `
+      varying vec3 vColor;
+      varying float vAlpha;
+
+      void main() {
+        vec2 p = gl_PointCoord - vec2(0.5);
+        float d = length(p);
+        float disc = smoothstep(0.5, 0.04, d);
+        float inner = smoothstep(0.18, 0.0, d);
+        float edge = smoothstep(0.5, 0.33, d) * smoothstep(0.18, 0.38, d);
+        float alpha = (disc * 0.34 + edge * 0.3 + inner * 0.1) * vAlpha;
+        gl_FragColor = vec4(vColor * (1.18 + inner * 0.85), alpha);
+      }
+    `,
+  });
+
+  return new THREE.Points(geometry, material);
 }
 
 function createPlanetPinLights(palette) {
@@ -1304,6 +1424,59 @@ function createStarTexture() {
   ctx.arc(48, 48, 6, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
   ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvasTexture);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createPlanetHaloTexture() {
+  const canvasTexture = document.createElement("canvas");
+  canvasTexture.width = 512;
+  canvasTexture.height = 512;
+  const ctx = canvasTexture.getContext("2d");
+  const center = 256;
+
+  ctx.translate(center, center);
+  ctx.globalCompositeOperation = "lighter";
+  ctx.lineCap = "round";
+
+  for (let i = 0; i < 46; i += 1) {
+    const radius = 172 + Math.random() * 27;
+    const start = -0.32 + Math.random() * Math.PI * 1.48;
+    const arc = 0.035 + Math.random() * 0.28;
+    const alpha = 0.01 + Math.random() * 0.03;
+    ctx.strokeStyle = `rgba(255, 255, 255, ${alpha})`;
+    ctx.lineWidth = 1.2 + Math.random() * 8.5;
+    ctx.beginPath();
+    ctx.ellipse(0, 0, radius, radius * (0.88 + Math.random() * 0.06), -0.03, start, start + arc);
+    ctx.stroke();
+  }
+
+  for (let i = 0; i < 34; i += 1) {
+    const angle = Math.random() * Math.PI * 2;
+    const radius = 160 + Math.random() * 58;
+    const x = Math.cos(angle) * radius;
+    const y = Math.sin(angle) * radius * 0.9;
+    const glow = ctx.createRadialGradient(x, y, 0, x, y, 14 + Math.random() * 28);
+    glow.addColorStop(0, "rgba(255, 255, 255, 0.08)");
+    glow.addColorStop(1, "rgba(255, 255, 255, 0)");
+    ctx.fillStyle = glow;
+    ctx.beginPath();
+    ctx.arc(x, y, 36, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  ctx.globalCompositeOperation = "destination-out";
+  const hollow = ctx.createRadialGradient(0, 0, 128, 0, 0, 170);
+  hollow.addColorStop(0, "rgba(0, 0, 0, 1)");
+  hollow.addColorStop(0.62, "rgba(0, 0, 0, 0.88)");
+  hollow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = hollow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 185, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
 
   const texture = new THREE.CanvasTexture(canvasTexture);
   texture.colorSpace = THREE.SRGBColorSpace;
