@@ -103,6 +103,8 @@ function animate() {
   planet.surface.material.uniforms.uTime.value = time;
   planet.glow.material.uniforms.uTime.value = time;
   planet.aura.material.rotation = time * 0.025;
+  planet.rayFan.material.rotation = -0.035 + Math.sin(time * 0.12) * 0.018;
+  planet.rayFan.material.opacity = 0.38 + Math.sin(time * 0.16) * 0.035;
 
   for (const trail of orbitSystem.allTrails) {
     trail.material.uniforms.uTime.value = time;
@@ -140,7 +142,7 @@ function resize() {
     camera.aspect < 0.85 ? 8.8 : 3.9,
     camera.aspect < 0.85 ? 17.2 : 12.6,
   );
-  cameraBaseTarget.set(camera.aspect < 0.85 ? 0 : 0.42, 0.18, 0);
+  cameraBaseTarget.set(camera.aspect < 0.85 ? 0 : 0.08, 0.18, 0);
   camera.position.copy(cameraBasePosition);
   camera.lookAt(cameraBaseTarget);
   camera.updateProjectionMatrix();
@@ -239,8 +241,8 @@ function readSettings() {
     },
     cinematic: {
       backdrop: 3600,
-      dust: 16000,
-      sparkDust: 26000,
+      dust: 32000,
+      sparkDust: 32000,
       segments: 420,
       exposure: 0.82,
       bloomStrength: 0.58,
@@ -347,14 +349,14 @@ function createNebula({ palette }) {
         float voids = smoothstep(0.54, 0.79, blackDust) * smoothstep(0.04, 0.45, uv.y);
         float verticalBand = smoothstep(0.7, -0.1, abs(p.y + 0.06));
         float dustBand = smoothstep(0.58, 0.0, abs(p.y + 0.16 - p.x * 0.055));
-        float planetGlow = exp(-length((uv - vec2(0.64, 0.54)) * vec2(2.2, 3.0)) * 3.85);
-        float rays = rayFan(vec2(0.62, 0.54), uv, 1.0);
+        float planetGlow = exp(-length((uv - vec2(0.68, 0.54)) * vec2(2.2, 3.0)) * 3.7);
+        float rays = rayFan(vec2(0.66, 0.54), uv, 1.0);
         float vignette = smoothstep(1.05, 0.22, length(p));
 
         vec3 base = vec3(0.0015, 0.002, 0.009);
         vec3 blueMist = uOuter * (0.012 + cloud * 0.046 + dustBand * 0.014);
         vec3 purpleMist = uMid * (cloud * verticalBand * 0.044 + dustBand * 0.018);
-        vec3 hotMist = uInner * (planetGlow * 0.084 + rays * 0.105);
+        vec3 hotMist = uInner * (planetGlow * 0.092 + rays * 0.16);
         vec3 color = base + blueMist + purpleMist + hotMist;
         color *= mix(1.0, 0.3, shadow * 0.72 + voids * 0.86);
         color *= 0.08 + vignette * 0.58;
@@ -662,10 +664,17 @@ function createOrbitDust(orbits, count) {
 
     orbitData[i2] = orbit.rx;
     orbitData[i2 + 1] = orbit.ry;
-    phases[i] = Math.random() * Math.PI * 2;
-    speeds[i] = (Math.random() > 0.12 ? 1 : -1) * (0.045 + Math.random() * 0.115);
-    offsets[i] = (Math.random() - 0.5) * 0.2;
-    zOffsets[i] = (Math.random() - 0.5) * 0.18;
+    const clustered = Math.random() < 0.64;
+    const clusterCenter =
+      (Math.floor(Math.random() * 14) / 14 + orbit.gradientT * 0.11) * Math.PI * 2;
+    phases[i] = clustered
+      ? clusterCenter + (Math.random() - 0.5) * (0.16 + Math.random() * 0.22)
+      : Math.random() * Math.PI * 2;
+    speeds[i] =
+      (Math.random() > 0.12 ? 1 : -1) *
+      (clustered ? 0.035 + Math.random() * 0.07 : 0.05 + Math.random() * 0.12);
+    offsets[i] = (Math.random() - 0.5) * (clustered ? 0.26 : 0.18);
+    zOffsets[i] = (Math.random() - 0.5) * (clustered ? 0.24 : 0.16);
 
     const color = orbit.color
       .clone()
@@ -675,8 +684,7 @@ function createOrbitDust(orbits, count) {
     colors[i3 + 1] = color.g;
     colors[i3 + 2] = color.b;
 
-    sizes[i] = 0.55 + Math.random() * 2.05;
-    phases[i] = Math.random() * Math.PI * 2;
+    sizes[i] = clustered ? 0.42 + Math.random() * 1.7 : 0.5 + Math.random() * 1.85;
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -733,7 +741,7 @@ function createOrbitDust(orbits, count) {
         float rayY = smoothstep(0.45, 0.0, abs(uv.y)) * smoothstep(0.5, 0.02, abs(uv.x));
         float alpha = max(core, (rayX + rayY) * 0.18) * vAlpha;
         if (alpha < 0.01) discard;
-        gl_FragColor = vec4(vColor * 2.35, alpha * 1.12);
+        gl_FragColor = vec4(vColor * 3.05, alpha * 1.28);
       }
     `,
   });
@@ -892,7 +900,7 @@ function createOrbitSprites(trails) {
 
 function createPlanet({ palette }) {
   const group = new THREE.Group();
-  group.position.set(1.7, 0.92, 0.02);
+  group.position.set(3.35, 0.92, 0.02);
   const inner = samplePalette(palette, 1);
   const mid = samplePalette(palette, 0.6);
   const outer = samplePalette(palette, 0);
@@ -910,6 +918,20 @@ function createPlanet({ palette }) {
   );
   aura.position.set(0.35, 0.18, -0.9);
   aura.scale.set(7, 7, 1);
+
+  const rayFan = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: createRayFanTexture(),
+      color: inner.clone().lerp(new THREE.Color("#ffffff"), 0.05),
+      transparent: true,
+      opacity: 0.42,
+      blending: THREE.AdditiveBlending,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
+  rayFan.position.set(0.48, 0.2, -1.15);
+  rayFan.scale.set(7.8, 5.2, 1);
 
   const haloRing = new THREE.Mesh(
     new THREE.TorusGeometry(1.88, 0.01, 8, 192),
@@ -1007,10 +1029,11 @@ function createPlanet({ palette }) {
   );
 
   const pinLights = createPlanetPinLights(palette);
-  group.add(aura, haloRing, glow, surface, pinLights);
+  group.add(rayFan, aura, haloRing, glow, surface, pinLights);
 
   return {
     group,
+    rayFan,
     aura,
     haloRing,
     glow,
@@ -1136,6 +1159,62 @@ function createAuraTexture() {
     ctx.lineTo(Math.cos(angle) * length, Math.sin(angle) * length);
     ctx.stroke();
   }
+
+  const texture = new THREE.CanvasTexture(canvasTexture);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createRayFanTexture() {
+  const canvasTexture = document.createElement("canvas");
+  canvasTexture.width = 512;
+  canvasTexture.height = 512;
+  const ctx = canvasTexture.getContext("2d");
+  const originX = 170;
+  const originY = 260;
+
+  ctx.translate(originX, originY);
+  for (let i = 0; i < 96; i += 1) {
+    const t = i / 95;
+    const angle = -0.62 + t * 0.88 + (Math.random() - 0.5) * 0.035;
+    const start = 48 + Math.random() * 22;
+    const length = 230 + Math.random() * 270;
+    const width = 1 + Math.random() * 8;
+    const alpha = (0.018 + Math.random() * 0.038) * (1 - Math.abs(t - 0.42) * 0.55);
+    const x1 = Math.cos(angle) * start;
+    const y1 = Math.sin(angle) * start;
+    const x2 = Math.cos(angle) * length;
+    const y2 = Math.sin(angle) * length;
+    const gradient = ctx.createLinearGradient(x1, y1, x2, y2);
+    gradient.addColorStop(0, `rgba(255, 110, 205, ${alpha})`);
+    gradient.addColorStop(0.55, `rgba(255, 110, 205, ${alpha * 0.55})`);
+    gradient.addColorStop(1, "rgba(255, 110, 205, 0)");
+    ctx.strokeStyle = gradient;
+    ctx.lineWidth = width;
+    ctx.beginPath();
+    ctx.moveTo(x1, y1);
+    ctx.lineTo(x2, y2);
+    ctx.stroke();
+  }
+
+  const softFan = ctx.createRadialGradient(0, 0, 42, 0, 0, 250);
+  softFan.addColorStop(0, "rgba(255, 80, 180, 0)");
+  softFan.addColorStop(0.22, "rgba(255, 80, 180, 0.035)");
+  softFan.addColorStop(0.75, "rgba(80, 50, 255, 0.018)");
+  softFan.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = softFan;
+  ctx.fillRect(-originX, -originY, 512, 512);
+
+  ctx.globalCompositeOperation = "destination-out";
+  const hollow = ctx.createRadialGradient(0, 0, 0, 0, 0, 74);
+  hollow.addColorStop(0, "rgba(0, 0, 0, 1)");
+  hollow.addColorStop(0.72, "rgba(0, 0, 0, 0.85)");
+  hollow.addColorStop(1, "rgba(0, 0, 0, 0)");
+  ctx.fillStyle = hollow;
+  ctx.beginPath();
+  ctx.arc(0, 0, 78, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
 
   const texture = new THREE.CanvasTexture(canvasTexture);
   texture.colorSpace = THREE.SRGBColorSpace;
