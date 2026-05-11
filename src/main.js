@@ -147,6 +147,14 @@ function resize() {
   camera.lookAt(cameraBaseTarget);
   camera.updateProjectionMatrix();
 
+  const portraitLayout = camera.aspect < 0.85;
+  planet.group.position.set(
+    portraitLayout ? 1.25 : 3.35,
+    portraitLayout ? 0.78 : 0.92,
+    0.02,
+  );
+  planet.group.scale.setScalar(portraitLayout ? (camera.aspect < 0.58 ? 0.82 : 0.92) : 1);
+
   const pixelRatio = Math.min(window.devicePixelRatio || 1, settings.pixelRatio);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(width, height, false);
