@@ -24,6 +24,8 @@ const cameraBasePosition = new THREE.Vector3();
 const cameraBaseTarget = new THREE.Vector3(0, 0.2, 0);
 const cameraSwayPosition = new THREE.Vector3();
 const cameraSwayTarget = new THREE.Vector3();
+const planetWorldPosition = new THREE.Vector3();
+const orbitVisualOffset = new THREE.Vector3();
 const clock = new THREE.Clock();
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const THEMES = {
@@ -175,8 +177,15 @@ function resize() {
   );
   planet.group.scale.setScalar(portraitLayout ? (camera.aspect < 0.58 ? 0.82 : 0.92) : 1);
   orbitSystem.group.scale.setScalar(portraitLayout ? 0.94 : 1.23);
-  orbitSystem.group.position.copy(planet.group.position);
-  orbitSystem.occlusion.center.value.set(0, 0, 0);
+  orbitVisualOffset.set(
+    portraitLayout ? 0.24 : 1.05,
+    portraitLayout ? -0.04 : -0.08,
+    0,
+  );
+  orbitSystem.group.position.copy(planet.group.position).add(orbitVisualOffset);
+  system.updateMatrixWorld(true);
+  planet.group.getWorldPosition(planetWorldPosition);
+  orbitSystem.occlusion.center.value.copy(orbitSystem.group.worldToLocal(planetWorldPosition));
   orbitSystem.occlusion.radius.value =
     (1.58 * planet.group.scale.x) / orbitSystem.group.scale.x;
 
