@@ -11,6 +11,16 @@ npm run dev
 
 Then open the local URL printed by Vite.
 
+## Use as a live wallpaper
+
+Build the static wallpaper bundle:
+
+```powershell
+npm run build
+```
+
+The generated `live-wallpaper` folder is self-contained and can be imported into a wallpaper app as a local web/HTML wallpaper. Point the wallpaper app at `live-wallpaper/index.html`.
+
 ## Wallpaper tuning
 
 Use URL parameters when adding it to a wallpaper app:
