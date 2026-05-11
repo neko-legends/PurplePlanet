@@ -551,12 +551,43 @@ function createOrbitTube(rx, ry, segments, radius, color, opacity) {
     5,
     true,
   );
-  const material = new THREE.MeshBasicMaterial({
-    color,
+  const material = new THREE.ShaderMaterial({
     transparent: true,
-    opacity,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
+    uniforms: {
+      uColor: { value: color },
+      uOpacity: { value: opacity },
+      uSeed: { value: Math.random() * 1000 },
+    },
+    vertexShader: `
+      varying float vProgress;
+
+      void main() {
+        vProgress = uv.x;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform vec3 uColor;
+      uniform float uOpacity;
+      uniform float uSeed;
+      varying float vProgress;
+
+      float hash(float p) {
+        return fract(sin(p * 437.31 + uSeed) * 43758.5453);
+      }
+
+      void main() {
+        float coarse = hash(floor(vProgress * 110.0));
+        float fine = hash(floor(vProgress * 420.0));
+        float lane = 0.34 + smoothstep(0.16, 0.92, coarse) * 0.58 + fine * 0.16;
+        float breath = 0.72 + sin((vProgress + uSeed * 0.001) * 6.2831853 * 3.0) * 0.18;
+        float alpha = uOpacity * lane * breath;
+        if (alpha < 0.002) discard;
+        gl_FragColor = vec4(uColor * (0.82 + lane * 0.68), alpha);
+      }
+    `,
   });
   return new THREE.Mesh(geometry, material);
 }
