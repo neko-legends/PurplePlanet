@@ -136,13 +136,13 @@ function resize() {
   const width = Math.max(1, window.innerWidth);
   const height = Math.max(1, window.innerHeight);
   camera.aspect = width / height;
-  camera.fov = camera.aspect < 0.85 ? 61 : 58;
+  camera.fov = camera.aspect < 0.85 ? 61 : 66;
   cameraBasePosition.set(
-    camera.aspect < 0.85 ? 0 : -0.34,
-    camera.aspect < 0.85 ? 8.8 : 3.9,
-    camera.aspect < 0.85 ? 17.2 : 12.6,
+    camera.aspect < 0.85 ? 0 : -0.62,
+    camera.aspect < 0.85 ? 8.8 : 3.05,
+    camera.aspect < 0.85 ? 17.2 : 10.85,
   );
-  cameraBaseTarget.set(camera.aspect < 0.85 ? 0 : 0.08, 0.18, 0);
+  cameraBaseTarget.set(camera.aspect < 0.85 ? 0 : 0.24, camera.aspect < 0.85 ? 0.18 : 0.04, 0);
   camera.position.copy(cameraBasePosition);
   camera.lookAt(cameraBaseTarget);
   camera.updateProjectionMatrix();
@@ -154,6 +154,7 @@ function resize() {
     0.02,
   );
   planet.group.scale.setScalar(portraitLayout ? (camera.aspect < 0.58 ? 0.82 : 0.92) : 1);
+  orbitSystem.group.scale.setScalar(portraitLayout ? 0.94 : 1.23);
 
   const pixelRatio = Math.min(window.devicePixelRatio || 1, settings.pixelRatio);
   renderer.setPixelRatio(pixelRatio);
@@ -460,11 +461,11 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
   const orbits = [];
   const trails = [];
   const allTrails = [];
-  const orbitCount = 18;
+  const orbitCount = 19;
 
   for (let i = 0; i < orbitCount; i += 1) {
-    const rx = 2.25 + i * 0.61;
-    const ry = rx * (0.33 + i * 0.011);
+    const rx = 2.35 + i * 0.69;
+    const ry = rx * (0.31 + i * 0.0115);
     const gradientT = 1 - i / Math.max(1, orbitCount - 1);
     const color = samplePalette(palette, gradientT);
     const guideColor = color.clone().lerp(new THREE.Color("#79819a"), 0.86);
