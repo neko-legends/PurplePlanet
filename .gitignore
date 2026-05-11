@@ -1,8 +1,9 @@
 node_modules/
 dist/
 verification/
+verification-*/
+verification-build/
 *.log
 .env
 .env.*
 !.env.example
-

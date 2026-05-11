@@ -5,7 +5,7 @@ import { inflateSync } from "node:zlib";
 import { chromium } from "playwright-core";
 
 const url = process.env.PURPLEPLANET_URL || "http://127.0.0.1:5173/";
-const outDir = path.resolve("verification");
+const outDir = path.resolve(process.env.PURPLEPLANET_OUT_DIR || "verification");
 const browserPath = findBrowser();
 
 const viewports = [

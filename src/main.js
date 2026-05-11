@@ -71,7 +71,8 @@ const backdrop = createBackdrop(settings);
 scene.add(backdrop.points);
 
 const system = new THREE.Group();
-system.rotation.x = -0.04;
+system.rotation.x = -0.015;
+system.rotation.y = -0.035;
 scene.add(system);
 
 const orbitSystem = createOrbitSystem(settings);
@@ -122,7 +123,7 @@ function animate() {
       (0.72 + Math.sin(time * sprite.userData.twinkle + sprite.userData.phase) * 0.28);
     sprite.material.rotation =
       angle - Math.PI / 2 + sprite.userData.rotationJitter + Math.sin(time + sprite.userData.phase) * 0.04;
-    sprite.scale.setScalar(sprite.userData.size);
+    sprite.scale.set(sprite.userData.width, sprite.userData.height, 1);
   }
 
   updateCameraSway(cameraTime);
@@ -133,13 +134,13 @@ function resize() {
   const width = Math.max(1, window.innerWidth);
   const height = Math.max(1, window.innerHeight);
   camera.aspect = width / height;
-  camera.fov = camera.aspect < 0.85 ? 60 : 55;
+  camera.fov = camera.aspect < 0.85 ? 61 : 58;
   cameraBasePosition.set(
-    0,
-    camera.aspect < 0.85 ? 8.8 : 5.4,
-    camera.aspect < 0.85 ? 17.2 : 11.4,
+    camera.aspect < 0.85 ? 0 : -0.34,
+    camera.aspect < 0.85 ? 8.8 : 3.9,
+    camera.aspect < 0.85 ? 17.2 : 12.6,
   );
-  cameraBaseTarget.set(0, 0.2, 0);
+  cameraBaseTarget.set(camera.aspect < 0.85 ? 0 : 0.42, 0.18, 0);
   camera.position.copy(cameraBasePosition);
   camera.lookAt(cameraBaseTarget);
   camera.updateProjectionMatrix();
@@ -238,13 +239,13 @@ function readSettings() {
     },
     cinematic: {
       backdrop: 3600,
-      dust: 12000,
-      sparkDust: 16000,
+      dust: 16000,
+      sparkDust: 26000,
       segments: 420,
       exposure: 0.82,
-      bloomStrength: 0.52,
-      bloomRadius: 0.44,
-      bloomThreshold: 0.62,
+      bloomStrength: 0.58,
+      bloomRadius: 0.5,
+      bloomThreshold: 0.54,
       pixelRatio: 1.35,
     },
   };
@@ -322,6 +323,15 @@ function createNebula({ palette }) {
         return value;
       }
 
+      float rayFan(vec2 origin, vec2 uv, float direction) {
+        vec2 d = uv - origin;
+        float distanceFade = exp(-length(d * vec2(1.0, 1.45)) * 2.45);
+        float forward = smoothstep(-0.05, 0.65, d.x * direction);
+        float fan = smoothstep(0.72, 0.02, abs(d.y - d.x * 0.22 * direction));
+        float striation = 0.48 + fbm(uv * 18.0 + vec2(14.2, -6.7)) * 0.72;
+        return forward * fan * distanceFade * striation;
+      }
+
       void main() {
         vec2 uv = vUv;
         vec2 p = uv - 0.5;
@@ -331,19 +341,23 @@ function createNebula({ palette }) {
         float broad = fbm(uv * 2.2 + vec2(slow, -slow * 0.5));
         float detail = fbm(uv * 7.5 + vec2(-slow * 1.3, slow));
         float darkVeil = fbm(uv * 4.4 + vec2(8.0, -2.0));
+        float blackDust = fbm(uv * 5.8 + vec2(-3.0, 7.2));
         float cloud = smoothstep(0.26, 0.92, broad + detail * 0.46);
-        float shadow = smoothstep(0.42, 0.82, darkVeil);
+        float shadow = smoothstep(0.48, 0.86, darkVeil);
+        float voids = smoothstep(0.54, 0.79, blackDust) * smoothstep(0.04, 0.45, uv.y);
         float verticalBand = smoothstep(0.7, -0.1, abs(p.y + 0.06));
-        float planetGlow = exp(-length((uv - vec2(0.61, 0.55)) * vec2(2.3, 3.2)) * 4.2);
+        float dustBand = smoothstep(0.58, 0.0, abs(p.y + 0.16 - p.x * 0.055));
+        float planetGlow = exp(-length((uv - vec2(0.64, 0.54)) * vec2(2.2, 3.0)) * 3.85);
+        float rays = rayFan(vec2(0.62, 0.54), uv, 1.0);
         float vignette = smoothstep(1.05, 0.22, length(p));
 
         vec3 base = vec3(0.0015, 0.002, 0.009);
-        vec3 blueMist = uOuter * (0.016 + cloud * 0.055);
-        vec3 purpleMist = uMid * (cloud * verticalBand * 0.05);
-        vec3 hotMist = uInner * planetGlow * 0.085;
+        vec3 blueMist = uOuter * (0.012 + cloud * 0.046 + dustBand * 0.014);
+        vec3 purpleMist = uMid * (cloud * verticalBand * 0.044 + dustBand * 0.018);
+        vec3 hotMist = uInner * (planetGlow * 0.084 + rays * 0.105);
         vec3 color = base + blueMist + purpleMist + hotMist;
-        color *= mix(1.0, 0.34, shadow * 0.78);
-        color *= 0.12 + vignette * 0.72;
+        color *= mix(1.0, 0.3, shadow * 0.72 + voids * 0.86);
+        color *= 0.08 + vignette * 0.58;
 
         gl_FragColor = vec4(color, 1.0);
       }
@@ -430,24 +444,24 @@ function createBackdrop({ backdrop, palette }) {
 
 function createOrbitSystem({ dust, sparkDust, segments, palette }) {
   const group = new THREE.Group();
-  group.rotation.x = -1.05;
-  group.rotation.z = -0.08;
+  group.rotation.x = -1.14;
+  group.rotation.z = -0.035;
 
   const orbits = [];
   const trails = [];
   const allTrails = [];
-  const orbitCount = 16;
+  const orbitCount = 18;
 
   for (let i = 0; i < orbitCount; i += 1) {
-    const rx = 2.35 + i * 0.62;
-    const ry = rx * (0.36 + i * 0.012);
+    const rx = 2.25 + i * 0.61;
+    const ry = rx * (0.33 + i * 0.011);
     const gradientT = 1 - i / Math.max(1, orbitCount - 1);
     const color = samplePalette(palette, gradientT);
-    const guideColor = color.clone().lerp(new THREE.Color("#11112a"), 0.58);
-    const tube = 0.006 + i * 0.0009;
-    const opacity = 0.048 - i * 0.0012;
+    const guideColor = color.clone().lerp(new THREE.Color("#79819a"), 0.86);
+    const tube = 0.0048 + i * 0.00072;
+    const opacity = Math.max(0.0028, 0.011 - i * 0.00028);
 
-    const glow = createOrbitTube(rx, ry, segments, tube * 5.4, guideColor, opacity * 0.12);
+    const glow = createOrbitTube(rx, ry, segments, tube * 6.2, guideColor, opacity * 0.07);
     const core = createOrbitTube(rx, ry, segments, tube, guideColor, opacity);
     glow.position.z = i * 0.018;
     core.position.z = i * 0.018 + 0.004;
@@ -455,11 +469,12 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
 
     const trailCount = i < 3 ? 2 : i < 9 ? 3 : 4;
     for (let j = 0; j < trailCount; j += 1) {
+      const featureTrail = j === 0 && (i === 3 || i === 6 || i === 10 || i > 13);
       const trailOptions = {
         phase: Math.random(),
-        speed: 0.014 + Math.random() * 0.036 + i * 0.0012,
-        length: 0.12 + Math.random() * 0.2 + (i > 8 ? 0.1 : 0),
-        opacity: 0.38 + Math.random() * 0.26,
+        speed: 0.012 + Math.random() * 0.032 + i * 0.0011,
+        length: 0.2 + Math.random() * 0.34 + (i > 8 ? 0.16 : 0) + (featureTrail ? 0.18 : 0),
+        opacity: 0.54 + Math.random() * 0.32 + (featureTrail ? 0.08 : 0),
         direction: Math.random() > 0.18 ? 1 : -1,
       };
       const halo = createOrbitTrail(
@@ -471,8 +486,8 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
         {
           ...trailOptions,
           halo: 1,
-          length: trailOptions.length * 1.16,
-          opacity: trailOptions.opacity * 0.09,
+          length: trailOptions.length * 1.2,
+          opacity: trailOptions.opacity * 0.12,
         },
       );
       halo.position.z = i * 0.026 + 0.024 + j * 0.002;
@@ -601,19 +616,19 @@ function createOrbitTrail(rx, ry, segments, radius, color, options) {
           ? mod(head - vProgress + 1.0, 1.0)
           : mod(vProgress - head + 1.0, 1.0);
         float tail = smoothstep(uLength, 0.0, behind);
-        float headGlow = exp(-behind * behind * 18000.0);
+        float headGlow = exp(-behind * behind * 9000.0);
         float taper = smoothstep(1.0, 0.18, behind / max(0.001, uLength));
         float shard = fract(sin((vProgress + uPhase * 3.71) * 957.31) * 43758.5453);
-        float breakup = mix(0.72, 1.25, shard);
+        float breakup = mix(0.82, 1.34, shard);
         float core = tail * taper * breakup;
-        float alpha = mix(core * 0.62 + headGlow * 0.5, core * 0.24, uHalo) * uOpacity;
+        float alpha = mix(core * 0.76 + headGlow * 0.68, core * 0.28, uHalo) * uOpacity;
 
         if (alpha < 0.006) {
           discard;
         }
 
-        vec3 hot = mix(uColor, vec3(1.0), clamp(headGlow * 0.48 + (1.0 - uHalo) * 0.08, 0.0, 1.0));
-        float power = mix(1.8 + headGlow * 3.2, 0.82, uHalo);
+        vec3 hot = mix(uColor, vec3(1.0, 0.9, 1.0), clamp(headGlow * 0.18 + (1.0 - uHalo) * 0.025, 0.0, 1.0));
+        float power = mix(2.35 + headGlow * 3.6, 1.02, uHalo);
         gl_FragColor = vec4(hot * power, alpha);
       }
     `,
@@ -652,12 +667,15 @@ function createOrbitDust(orbits, count) {
     offsets[i] = (Math.random() - 0.5) * 0.2;
     zOffsets[i] = (Math.random() - 0.5) * 0.18;
 
-    const color = orbit.color.clone().lerp(new THREE.Color("#ffffff"), Math.random() * 0.48);
+    const color = orbit.color
+      .clone()
+      .lerp(new THREE.Color("#ffffff"), Math.random() * 0.38)
+      .multiplyScalar(1.18);
     colors[i3] = color.r;
     colors[i3 + 1] = color.g;
     colors[i3 + 2] = color.b;
 
-    sizes[i] = 0.9 + Math.random() * 2.6;
+    sizes[i] = 0.55 + Math.random() * 2.05;
     phases[i] = Math.random() * Math.PI * 2;
   }
 
@@ -698,7 +716,7 @@ function createOrbitDust(orbits, count) {
         );
         vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
-        gl_PointSize = aSize * (92.0 / max(0.1, -mvPosition.z));
+        gl_PointSize = aSize * (100.0 / max(0.1, -mvPosition.z));
         vColor = color;
         vAlpha = 0.55 + sin(uTime * 2.0 + aPhase) * 0.24;
       }
@@ -715,7 +733,7 @@ function createOrbitDust(orbits, count) {
         float rayY = smoothstep(0.45, 0.0, abs(uv.y)) * smoothstep(0.5, 0.02, abs(uv.x));
         float alpha = max(core, (rayX + rayY) * 0.18) * vAlpha;
         if (alpha < 0.01) discard;
-        gl_FragColor = vec4(vColor * 2.1, alpha * 1.08);
+        gl_FragColor = vec4(vColor * 2.35, alpha * 1.12);
       }
     `,
   });
@@ -743,7 +761,10 @@ function createTrailSparks(trails, count) {
     const runner = trails[Math.floor(Math.random() * trails.length)].userData.runner;
     const i2 = i * 2;
     const i3 = i * 3;
-    const color = runner.orbit.color.clone().lerp(new THREE.Color("#ffffff"), Math.random() * 0.42);
+    const color = runner.orbit.color
+      .clone()
+      .lerp(new THREE.Color("#ffffff"), Math.random() * 0.34)
+      .multiplyScalar(1.22);
 
     orbitData[i2] = runner.orbit.rx;
     orbitData[i2 + 1] = runner.orbit.ry;
@@ -753,9 +774,9 @@ function createTrailSparks(trails, count) {
     phases[i] = runner.phase;
     speeds[i] = runner.speed * (0.88 + Math.random() * 0.22);
     directions[i] = runner.direction;
-    lags[i] = Math.pow(Math.random(), 1.85) * 0.82;
-    spreads[i] = (Math.random() - 0.5) * (0.08 + Math.random() * 0.26);
-    sizes[i] = 0.7 + Math.random() * 2.8;
+    lags[i] = Math.pow(Math.random(), 3.1) * 0.58;
+    spreads[i] = (Math.random() - 0.5) * (0.1 + Math.random() * 0.32);
+    sizes[i] = 0.45 + Math.random() * 2.35;
     zOffsets[i] = runner.z + (Math.random() - 0.5) * 0.22;
     seeds[i] = Math.random() * Math.PI * 2;
   }
@@ -806,9 +827,9 @@ function createTrailSparks(trails, count) {
         );
         vec4 mvPosition = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mvPosition;
-        gl_PointSize = aSize * (96.0 / max(0.1, -mvPosition.z));
+        gl_PointSize = aSize * (122.0 / max(0.1, -mvPosition.z));
         vColor = color;
-        vAlpha = pow(1.0 - clamp(aLag / 0.9, 0.0, 1.0), 2.2) * (0.58 + sin(uTime * 4.0 + aSeed) * 0.26);
+        vAlpha = pow(1.0 - clamp(aLag / 0.62, 0.0, 1.0), 1.7) * (0.7 + sin(uTime * 4.0 + aSeed) * 0.24);
       }
     `,
     fragmentShader: `
@@ -819,7 +840,7 @@ function createTrailSparks(trails, count) {
         vec2 uv = gl_PointCoord - 0.5;
         float core = smoothstep(0.5, 0.02, length(uv));
         if (core < 0.01) discard;
-        gl_FragColor = vec4(vColor * 2.9, core * vAlpha);
+        gl_FragColor = vec4(vColor * 3.55, core * vAlpha);
       }
     `,
   });
@@ -836,12 +857,12 @@ function createOrbitSprites(trails) {
   const sprites = [];
 
   for (let i = 0; i < trails.length; i += 1) {
-    if (i % 3 === 1 && Math.random() > 0.35) {
+    if (i % 4 !== 0 && Math.random() > 0.34) {
       continue;
     }
 
     const runner = trails[i].userData.runner;
-    const spriteColor = runner.orbit.color.clone().lerp(new THREE.Color("#ffffff"), 0.42);
+    const spriteColor = runner.orbit.color.clone().lerp(new THREE.Color("#ffffff"), 0.12);
     const material = new THREE.SpriteMaterial({
       map: texture,
       color: spriteColor,
@@ -852,10 +873,12 @@ function createOrbitSprites(trails) {
       blending: THREE.AdditiveBlending,
     });
     const sprite = new THREE.Sprite(material);
+    const width = 0.32 + Math.random() * 0.54;
     sprite.userData = {
       runner,
-      size: 0.16 + Math.random() * 0.24,
-      opacity: 0.46 + Math.random() * 0.3,
+      width,
+      height: width * (0.16 + Math.random() * 0.1),
+      opacity: 0.18 + Math.random() * 0.2,
       twinkle: 1.2 + Math.random() * 2.8,
       phase: Math.random() * Math.PI * 2,
       rotationJitter: (Math.random() - 0.5) * 0.18,
@@ -869,7 +892,7 @@ function createOrbitSprites(trails) {
 
 function createPlanet({ palette }) {
   const group = new THREE.Group();
-  group.position.set(1.42, 0.92, 0.02);
+  group.position.set(1.7, 0.92, 0.02);
   const inner = samplePalette(palette, 1);
   const mid = samplePalette(palette, 0.6);
   const outer = samplePalette(palette, 0);
@@ -879,21 +902,21 @@ function createPlanet({ palette }) {
       map: createAuraTexture(),
       color: inner.clone().lerp(outer, 0.16),
       transparent: true,
-      opacity: 0.22,
+      opacity: 0.13,
       blending: THREE.AdditiveBlending,
       depthTest: true,
       depthWrite: false,
     }),
   );
-  aura.position.set(0.2, 0.14, -0.82);
-  aura.scale.set(6.2, 6.2, 1);
+  aura.position.set(0.35, 0.18, -0.9);
+  aura.scale.set(7, 7, 1);
 
   const haloRing = new THREE.Mesh(
     new THREE.TorusGeometry(1.88, 0.01, 8, 192),
     new THREE.MeshBasicMaterial({
       color: inner.clone().lerp(new THREE.Color("#ffffff"), 0.16),
       transparent: true,
-      opacity: 0.36,
+      opacity: 0.2,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
     }),
@@ -906,7 +929,7 @@ function createPlanet({ palette }) {
       uniforms: {
         uTime: { value: 0 },
         uRimColor: { value: inner.clone().lerp(new THREE.Color("#ffffff"), 0.05) },
-        uShadeColor: { value: mid.clone().multiplyScalar(0.2) },
+        uShadeColor: { value: mid.clone().multiplyScalar(0.012) },
       },
       vertexShader: `
         varying vec3 vNormal;
@@ -930,11 +953,14 @@ function createPlanet({ palette }) {
         varying vec3 vPosition;
 
         void main() {
-          float rim = pow(1.0 - max(dot(vNormal, vView), 0.0), 2.2);
+          float facing = max(dot(vNormal, vView), 0.0);
+          float rimBase = 1.0 - facing;
+          float rim = smoothstep(0.68, 0.97, rimBase);
+          float litArc = smoothstep(-0.18, 0.62, vNormal.y * 0.52 + vNormal.x * 0.34);
           float shade = smoothstep(-0.8, 0.85, vNormal.y * 0.6 + vNormal.x * 0.25);
-          float pulse = sin((vPosition.y + vPosition.x) * 4.0 + uTime * 0.35) * 0.008;
-          vec3 core = mix(vec3(0.002, 0.0006, 0.005), uShadeColor * 0.045, shade);
-          vec3 edge = uRimColor * rim * 1.82;
+          float pulse = sin((vPosition.y + vPosition.x) * 4.0 + uTime * 0.35) * 0.0025;
+          vec3 core = mix(vec3(0.00004, 0.00002, 0.00012), uShadeColor * 0.018, shade);
+          vec3 edge = uRimColor * rim * litArc * 3.65;
           gl_FragColor = vec4(core + edge + pulse, 1.0);
         }
       `,
@@ -974,7 +1000,7 @@ function createPlanet({ palette }) {
         void main() {
           float rim = pow(1.0 - max(dot(vNormal, vView), 0.0), 3.35);
           vec3 color = mix(uInnerColor, uOuterColor, sin(uTime * 0.25) * 0.5 + 0.5);
-          gl_FragColor = vec4(color * 2.3, rim * 0.34);
+          gl_FragColor = vec4(color * 2.35, rim * 0.18);
         }
       `,
     }),
@@ -994,7 +1020,7 @@ function createPlanet({ palette }) {
 }
 
 function createPlanetPinLights(palette) {
-  const count = 680;
+  const count = 440;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
 
@@ -1022,9 +1048,9 @@ function createPlanetPinLights(palette) {
   return new THREE.Points(
     geometry,
     new THREE.PointsMaterial({
-      size: 0.024,
+      size: 0.012,
       transparent: true,
-      opacity: 0.68,
+      opacity: 0.34,
       vertexColors: true,
       blending: THREE.AdditiveBlending,
       depthWrite: false,
@@ -1088,23 +1114,23 @@ function createAuraTexture() {
   const center = 256;
 
   const glow = ctx.createRadialGradient(center, center, 30, center, center, 252);
-  glow.addColorStop(0, "rgba(255, 255, 255, 0.28)");
-  glow.addColorStop(0.28, "rgba(255, 128, 210, 0.22)");
-  glow.addColorStop(0.62, "rgba(120, 80, 255, 0.08)");
+  glow.addColorStop(0, "rgba(255, 255, 255, 0.34)");
+  glow.addColorStop(0.28, "rgba(255, 128, 210, 0.28)");
+  glow.addColorStop(0.62, "rgba(120, 80, 255, 0.11)");
   glow.addColorStop(1, "rgba(0, 0, 0, 0)");
   ctx.fillStyle = glow;
   ctx.fillRect(0, 0, 512, 512);
 
   ctx.translate(center, center);
-  for (let i = 0; i < 52; i += 1) {
-    const angle = -0.75 + (i / 51) * 1.48;
-    const length = 155 + Math.random() * 120;
-    const alpha = 0.024 + Math.random() * 0.034;
+  for (let i = 0; i < 72; i += 1) {
+    const angle = -0.82 + (i / 71) * 1.55;
+    const length = 185 + Math.random() * 180;
+    const alpha = 0.032 + Math.random() * 0.052;
     const gradient = ctx.createLinearGradient(0, 0, Math.cos(angle) * length, Math.sin(angle) * length);
     gradient.addColorStop(0, `rgba(255, 170, 230, ${alpha})`);
     gradient.addColorStop(1, "rgba(255, 170, 230, 0)");
     ctx.strokeStyle = gradient;
-    ctx.lineWidth = 2 + Math.random() * 7;
+    ctx.lineWidth = 1.5 + Math.random() * 9;
     ctx.beginPath();
     ctx.moveTo(0, 0);
     ctx.lineTo(Math.cos(angle) * length, Math.sin(angle) * length);
