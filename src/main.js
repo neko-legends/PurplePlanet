@@ -1,11 +1,14 @@
 import * as THREE from "three";
 import {
   BloomEffect,
+  ChromaticAberrationEffect,
   EffectComposer,
   EffectPass,
+  NoiseEffect,
   RenderPass,
   ToneMappingEffect,
   ToneMappingMode,
+  VignetteEffect,
 } from "postprocessing";
 import "./styles.css";
 
@@ -76,11 +79,31 @@ const toneMappingEffect = new ToneMappingEffect({
   whitePoint: 4.0,
 });
 toneMappingEffect.exposure = settings.exposure;
+const chromaticAberrationEffect = new ChromaticAberrationEffect({
+  offset: new THREE.Vector2(0.0006, 0.0006),
+  radialModulation: true,
+  modulationOffset: 0.2,
+});
+const noiseEffect = new NoiseEffect({ premultiply: true });
+noiseEffect.blendMode.opacity.value = 0.028;
+const vignetteEffect = new VignetteEffect({
+  offset: 0.38,
+  darkness: 0.52,
+});
 const composer = new EffectComposer(renderer, {
   frameBufferType: THREE.HalfFloatType,
 });
 composer.addPass(new RenderPass(scene, camera));
-composer.addPass(new EffectPass(camera, bloomEffect, toneMappingEffect));
+composer.addPass(
+  new EffectPass(
+    camera,
+    bloomEffect,
+    chromaticAberrationEffect,
+    noiseEffect,
+    vignetteEffect,
+    toneMappingEffect,
+  ),
+);
 
 class OrbitCurve extends THREE.Curve {
   constructor(rx, ry, start, length, depth = flatOrbitDepth()) {
@@ -147,6 +170,7 @@ function animate(timestamp = 0) {
   orbitSystem.occlusion.radius.value =
     (1.58 * planet.group.scale.x) / orbitSystem.group.scale.x;
 
+  orbitSystem.group.rotation.x = -1.14 + Math.sin(cameraTime * 0.09) * 0.018 + Math.sin(cameraTime * 0.037 + 1.2) * 0.008;
   orbitSystem.dust.material.uniforms.uTime.value = time;
   orbitSystem.sparkCloud.material.uniforms.uTime.value = time;
   backdrop.material.uniforms.uTime.value = time * 0.45;
@@ -172,6 +196,12 @@ function animate(timestamp = 0) {
 
   for (const trail of orbitSystem.allTrails) {
     trail.material.uniforms.uTime.value = time;
+    const flare = trail.userData.flare;
+    if (flare) {
+      const surge = Math.max(0, Math.sin(cameraTime * flare.freq + flare.phase));
+      const flareIntensity = surge * surge * surge;
+      trail.material.uniforms.uOpacity.value = flare.baseOpacity * (1 + flareIntensity * flare.boost);
+    }
   }
 
   const occlusionCenter = orbitSystem.occlusion.center.value;
@@ -673,6 +703,9 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
         opacity: 0.54 + Math.random() * 0.32 + (featureTrail ? 0.08 : 0),
         direction: Math.random() > 0.18 ? 1 : -1,
       };
+      const flare = featureTrail
+        ? { freq: 0.07 + Math.random() * 0.04, phase: Math.random() * Math.PI * 2, boost: 0.55 + Math.random() * 0.25 }
+        : null;
       const halo = createOrbitTrail(
         rx,
         ry,
@@ -689,6 +722,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
           opacity: trailOptions.opacity * (0.12 + focusBlur * 0.12),
         },
       );
+      if (flare) halo.userData.flare = { ...flare, baseOpacity: trailOptions.opacity * (0.12 + focusBlur * 0.12) };
       group.add(halo);
       allTrails.push(halo);
 
@@ -708,6 +742,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
         },
       );
       trail.userData.runner.layerZ = 0.08 + j * 0.018;
+      if (flare) trail.userData.flare = { ...flare, baseOpacity: trailOptions.opacity * (1 - focusBlur * 0.24) };
       group.add(trail);
       trails.push(trail);
       allTrails.push(trail);
@@ -1318,6 +1353,23 @@ function createPlanet({ palette }) {
         varying vec3 vView;
         varying vec3 vPosition;
 
+        float hash3(vec3 p) {
+          return fract(sin(dot(p, vec3(127.1, 311.7, 74.7))) * 43758.5453);
+        }
+
+        float surfaceNoise(vec3 p) {
+          vec3 i = floor(p);
+          vec3 f = fract(p);
+          f = f * f * (3.0 - 2.0 * f);
+          return mix(
+            mix(mix(hash3(i), hash3(i + vec3(1,0,0)), f.x),
+                mix(hash3(i + vec3(0,1,0)), hash3(i + vec3(1,1,0)), f.x), f.y),
+            mix(mix(hash3(i + vec3(0,0,1)), hash3(i + vec3(1,0,1)), f.x),
+                mix(hash3(i + vec3(0,1,1)), hash3(i + vec3(1,1,1)), f.x), f.y),
+            f.z
+          );
+        }
+
         void main() {
           float facing = max(dot(vNormal, vView), 0.0);
           float rimBase = 1.0 - facing;
@@ -1325,7 +1377,11 @@ function createPlanet({ palette }) {
           float litArc = smoothstep(-0.18, 0.62, vNormal.y * 0.52 + vNormal.x * 0.34);
           float shade = smoothstep(-0.8, 0.85, vNormal.y * 0.6 + vNormal.x * 0.25);
           float pulse = sin((vPosition.y + vPosition.x) * 4.0 + uTime * 0.35) * 0.0025;
+          float n1 = surfaceNoise(vPosition * 2.4 + vec3(0.0, uTime * 0.008, 0.0));
+          float n2 = surfaceNoise(vPosition * 5.8 + vec3(7.3, -3.1, uTime * 0.012));
+          float continent = smoothstep(0.38, 0.62, n1 * 0.7 + n2 * 0.3);
           vec3 core = mix(vec3(0.00004, 0.00002, 0.00012), uShadeColor * 0.018, shade);
+          core += uShadeColor * continent * shade * 0.014;
           vec3 edge = uRimColor * rim * litArc * 2.15 * (0.86 + uPulse * 0.3);
           gl_FragColor = vec4(core + edge + pulse, 1.0);
         }
