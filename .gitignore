@@ -6,6 +6,10 @@ dist/
 live-wallpaper/
 verification-build/
 
+# .NET build output
+**/bin/
+**/obj/
+
 # Generated wallpaper packages
 packages/
 *.lively
