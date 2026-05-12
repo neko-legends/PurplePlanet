@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite --host 127.0.0.1",
     "build": "vite build --outDir live-wallpaper --emptyOutDir=true",
+    "package:lively": "powershell -NoProfile -ExecutionPolicy Bypass -File scripts/package-lively.ps1",
     "preview": "vite preview --host 127.0.0.1",
     "verify": "node scripts/verify.mjs"
   },
