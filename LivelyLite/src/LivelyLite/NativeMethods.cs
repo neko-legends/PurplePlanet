@@ -17,12 +17,16 @@ internal static class NativeMethods
     public const long WS_SYSMENU = 0x00080000L;
     public const long WS_MINIMIZEBOX = 0x00020000L;
     public const long WS_MAXIMIZEBOX = 0x00010000L;
+    public const long WS_DISABLED = 0x08000000L;
     public const long WS_EX_APPWINDOW = 0x00040000L;
     public const long WS_EX_TOOLWINDOW = 0x00000080L;
+    public const long WS_EX_TRANSPARENT = 0x00000020L;
+    public const long WS_EX_NOACTIVATE = 0x08000000L;
 
     public const uint SWP_NOACTIVATE = 0x0010;
     public const uint SWP_SHOWWINDOW = 0x0040;
     public const uint SWP_FRAMECHANGED = 0x0020;
+    public const uint SWP_NOOWNERZORDER = 0x0200;
 
     public static readonly IntPtr HWND_BOTTOM = new(1);
 
@@ -48,6 +52,9 @@ internal static class NativeMethods
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int x, int y, int cx, int cy, uint flags);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    public static extern bool EnableWindow(IntPtr hWnd, bool bEnable);
 
     [DllImport("user32.dll", SetLastError = true)]
     public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);

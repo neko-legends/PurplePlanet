@@ -6,6 +6,8 @@ It loads Lively-style local wallpaper folders and `.zip` / `.lively` packages th
 
 The embedded static server is intentional: modern Chromium blocks Vite-built module scripts from `file://` URLs, which shows up as a plain white wallpaper. LivelyLite does not run the Vite dev server or keep Node alive.
 
+LivelyLite prefers Google Chrome when it is installed. Microsoft Edge is only a fallback because Edge can show Microsoft account sync prompts on fresh browser profiles.
+
 ## Run
 
 ```powershell

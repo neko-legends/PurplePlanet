@@ -110,8 +110,12 @@ internal sealed class WallpaperHost : IDisposable
 
         psi.ArgumentList.Add($"--user-data-dir={profile}");
         psi.ArgumentList.Add("--no-first-run");
+        psi.ArgumentList.Add("--no-default-browser-check");
+        psi.ArgumentList.Add("--disable-sync");
+        psi.ArgumentList.Add("--disable-background-networking");
+        psi.ArgumentList.Add("--disable-default-apps");
         psi.ArgumentList.Add("--disable-session-crashed-bubble");
-        psi.ArgumentList.Add("--disable-features=msEdgeStartupBoost,HardwareMediaKeyHandling");
+        psi.ArgumentList.Add("--disable-features=msEdgeStartupBoost,HardwareMediaKeyHandling,SigninInterception,AccountConsistency,EdgeSync,msImplicitSignin");
         psi.ArgumentList.Add("--autoplay-policy=no-user-gesture-required");
         psi.ArgumentList.Add($"--window-position={target.Bounds.Left},{target.Bounds.Top}");
         psi.ArgumentList.Add($"--window-size={target.Bounds.Width},{target.Bounds.Height}");
@@ -229,12 +233,19 @@ internal sealed class WallpaperHost : IDisposable
         style |= NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE;
         _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
 
+        _ = NativeMethods.SetParent(hwnd, parent);
+
+        style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        style |= NativeMethods.WS_DISABLED;
+        _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+
         var exStyle = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
         exStyle &= ~NativeMethods.WS_EX_APPWINDOW;
-        exStyle |= NativeMethods.WS_EX_TOOLWINDOW;
+        exStyle |= NativeMethods.WS_EX_TOOLWINDOW |
+                   NativeMethods.WS_EX_TRANSPARENT |
+                   NativeMethods.WS_EX_NOACTIVATE;
         _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
 
-        _ = NativeMethods.SetParent(hwnd, parent);
         _ = NativeMethods.SetWindowPos(
             hwnd,
             NativeMethods.HWND_BOTTOM,
@@ -242,7 +253,12 @@ internal sealed class WallpaperHost : IDisposable
             bounds.Top,
             bounds.Width,
             bounds.Height,
-            NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW | NativeMethods.SWP_NOACTIVATE);
+            NativeMethods.SWP_FRAMECHANGED |
+            NativeMethods.SWP_SHOWWINDOW |
+            NativeMethods.SWP_NOACTIVATE |
+            NativeMethods.SWP_NOOWNERZORDER);
+
+        _ = NativeMethods.EnableWindow(hwnd, false);
     }
 
     public void Dispose()
