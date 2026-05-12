@@ -2,7 +2,9 @@
 
 Small live-wallpaper host for Windows. It intentionally avoids Lively's gallery, updater, installer, alternate players, account features, ML tools, and screensaver integration.
 
-It loads Lively-style local wallpaper folders and `.zip` / `.lively` packages that contain `LivelyInfo.json`. Web wallpapers are launched in the installed Chromium browser and attached behind desktop icons. Picture, GIF, and video assets use a small generated HTML wrapper.
+It loads Lively-style local wallpaper folders and `.zip` / `.lively` packages that contain `LivelyInfo.json`. Web wallpapers are served from an embedded `127.0.0.1` static server, launched in the installed Chromium browser, and attached behind desktop icons. Picture, GIF, and video assets use a small generated HTML wrapper.
+
+The embedded static server is intentional: modern Chromium blocks Vite-built module scripts from `file://` URLs, which shows up as a plain white wallpaper. LivelyLite does not run the Vite dev server or keep Node alive.
 
 ## Run
 

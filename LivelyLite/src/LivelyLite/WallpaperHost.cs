@@ -6,6 +6,8 @@ namespace LivelyLite;
 internal sealed class WallpaperHost : IDisposable
 {
     private readonly List<WallpaperProcess> processes = new();
+    private StaticFileServer? staticFileServer;
+    private string? profileRoot;
     private AppConfig? config;
     private LivelyAsset? asset;
 
@@ -20,12 +22,16 @@ internal sealed class WallpaperHost : IDisposable
         if (!asset.IsSupported)
             throw new NotSupportedException($"'{asset.Kind}' wallpapers are intentionally not included in LivelyLite.");
 
+        if (asset.RequiresHttpServer)
+            staticFileServer = new StaticFileServer(asset.RootDirectory);
+
         var browser = BrowserLocator.Find(newConfig.BrowserExecutable);
+        profileRoot = Path.Combine(AppPaths.BrowserProfiles, Guid.NewGuid().ToString("N"));
         var targets = GetTargets(newConfig);
 
         foreach (var target in targets)
         {
-            var process = LaunchBrowser(browser, asset, newConfig, target);
+            var process = LaunchBrowser(browser, asset, newConfig, target, staticFileServer, profileRoot);
             processes.Add(process);
         }
     }
@@ -50,6 +56,22 @@ internal sealed class WallpaperHost : IDisposable
             process.Stop();
 
         processes.Clear();
+        staticFileServer?.Dispose();
+        staticFileServer = null;
+
+        if (!string.IsNullOrWhiteSpace(profileRoot) && Directory.Exists(profileRoot))
+        {
+            try
+            {
+                Directory.Delete(profileRoot, true);
+            }
+            catch
+            {
+                // Browser profile cleanup is best-effort.
+            }
+        }
+
+        profileRoot = null;
     }
 
     private static IReadOnlyList<TargetDisplay> GetTargets(AppConfig config)
@@ -64,13 +86,19 @@ internal sealed class WallpaperHost : IDisposable
         return [new TargetDisplay("span", SystemInformation.VirtualScreen)];
     }
 
-    private static WallpaperProcess LaunchBrowser(string browserPath, LivelyAsset asset, AppConfig config, TargetDisplay target)
+    private static WallpaperProcess LaunchBrowser(
+        string browserPath,
+        LivelyAsset asset,
+        AppConfig config,
+        TargetDisplay target,
+        StaticFileServer? staticFileServer,
+        string profileRoot)
     {
         var startedAt = DateTime.Now.AddSeconds(-1);
-        var profile = Path.Combine(AppPaths.BrowserProfiles, target.Id);
+        var profile = Path.Combine(profileRoot, target.Id);
         Directory.CreateDirectory(profile);
 
-        var url = asset.GetLaunchUrl(config);
+        var url = asset.GetLaunchUrl(config, staticFileServer);
         var psi = new ProcessStartInfo
         {
             FileName = browserPath,

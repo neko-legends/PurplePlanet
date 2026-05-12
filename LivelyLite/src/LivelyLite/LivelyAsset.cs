@@ -32,6 +32,8 @@ internal sealed class LivelyAsset
         ? Path.GetFileName(RootDirectory.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
         : Info.Title!;
 
+    public bool RequiresHttpServer => Kind is WallpaperKind.Web or WallpaperKind.WebAudio;
+
     public static LivelyAsset Load(string path)
     {
         if (string.IsNullOrWhiteSpace(path))
@@ -61,11 +63,15 @@ internal sealed class LivelyAsset
         throw new FileNotFoundException("Wallpaper path was not found.", path);
     }
 
-    public string GetLaunchUrl(AppConfig config)
+    public string GetLaunchUrl(AppConfig config, StaticFileServer? staticFileServer = null)
     {
         return Kind switch
         {
-            WallpaperKind.Web or WallpaperKind.WebAudio => AppendQuery(ToFileUri(ResolveAssetFile()), config.QueryString),
+            WallpaperKind.Web or WallpaperKind.WebAudio => AppendQuery(
+                staticFileServer is null
+                    ? ToFileUri(ResolveAssetFile())
+                    : staticFileServer.GetUrl(ResolveAssetFile()),
+                config.QueryString),
             WallpaperKind.Url or WallpaperKind.VideoStream => AppendQuery(Info.FileName ?? "", config.QueryString),
             WallpaperKind.Picture or WallpaperKind.Gif or WallpaperKind.Video => MediaWrapper.GetUrl(ResolveAssetFile(), Kind),
             _ => throw new NotSupportedException($"LivelyLite does not support '{Kind}' wallpapers.")
