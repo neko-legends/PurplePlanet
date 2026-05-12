@@ -6,6 +6,7 @@ namespace LivelyLite;
 internal sealed class WallpaperHost : IDisposable
 {
     private readonly List<WallpaperProcess> processes = new();
+    private readonly BrowserJob browserJob = new();
     private StaticFileServer? staticFileServer;
     private string? profileRoot;
     private AppConfig? config;
@@ -31,7 +32,7 @@ internal sealed class WallpaperHost : IDisposable
 
         foreach (var target in targets)
         {
-            var process = LaunchBrowser(browser, asset, newConfig, target, staticFileServer, profileRoot);
+            var process = LaunchBrowser(browser, asset, newConfig, target, staticFileServer, profileRoot, browserJob);
             processes.Add(process);
         }
     }
@@ -92,7 +93,8 @@ internal sealed class WallpaperHost : IDisposable
         AppConfig config,
         TargetDisplay target,
         StaticFileServer? staticFileServer,
-        string profileRoot)
+        string profileRoot,
+        BrowserJob browserJob)
     {
         var startedAt = DateTime.Now.AddSeconds(-1);
         var profile = Path.Combine(profileRoot, target.Id);
@@ -116,6 +118,7 @@ internal sealed class WallpaperHost : IDisposable
         psi.ArgumentList.Add($"--app={url}");
 
         var process = Process.Start(psi) ?? throw new InvalidOperationException("Failed to start browser process.");
+        browserJob.Assign(process);
         var hwnd = WaitForBrowserWindow(process, browserPath, asset.Title, startedAt, config.StartupTimeoutMs);
         if (hwnd == IntPtr.Zero)
             throw new TimeoutException("Timed out waiting for browser wallpaper window.");
@@ -242,7 +245,11 @@ internal sealed class WallpaperHost : IDisposable
             NativeMethods.SWP_FRAMECHANGED | NativeMethods.SWP_SHOWWINDOW | NativeMethods.SWP_NOACTIVATE);
     }
 
-    public void Dispose() => Stop();
+    public void Dispose()
+    {
+        Stop();
+        browserJob.Dispose();
+    }
 
     private sealed record TargetDisplay(string Id, Rectangle Bounds);
 
