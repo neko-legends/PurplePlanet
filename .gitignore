@@ -6,6 +6,10 @@ dist/
 live-wallpaper/
 verification-build/
 
+# Generated wallpaper packages
+packages/
+*.lively
+
 # Render verification screenshots and summaries
 verification/
 verification-*/

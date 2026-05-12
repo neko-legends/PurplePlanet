@@ -13,13 +13,35 @@ Then open the local URL printed by Vite.
 
 ## Use as a live wallpaper
 
-Build the static wallpaper bundle:
+Use a real wallpaper host for daily use. A batch file can start a browser window, but it cannot attach the animation to the Windows desktop, restore it on boot, or handle monitor placement. Lively Wallpaper and Wallpaper Engine are the right layer for that.
+
+Build the static wallpaper bundle and Lively package:
 
 ```powershell
-npm run build
+npm run package:lively
 ```
 
-The generated `live-wallpaper` folder is self-contained and can be imported into a wallpaper app as a local web/HTML wallpaper. Point the wallpaper app at `live-wallpaper/index.html`.
+Or double-click:
+
+```text
+Build-LiveWallpaper.bat
+```
+
+Generated outputs:
+
+- `live-wallpaper/` is the self-contained static web wallpaper.
+- `packages/PurplePlanet.lively` is the Lively package.
+- `packages/PurplePlanet.zip` is the same package as a normal zip.
+
+For Lively Wallpaper, drag `packages/PurplePlanet.lively` or `packages/PurplePlanet.zip` into the Lively window. If Windows associates `.lively` files with Lively, double-clicking `PurplePlanet.lively` will open it there. Enable `Start with Windows` inside Lively so the wallpaper starts on boot.
+
+For Wallpaper Engine, create a web wallpaper from `live-wallpaper/index.html`, then enable Wallpaper Engine startup in its settings.
+
+To preview the built wallpaper in your browser:
+
+```text
+Preview-LiveWallpaper.bat
+```
 
 ## Wallpaper tuning
 
