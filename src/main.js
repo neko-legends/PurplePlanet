@@ -128,6 +128,7 @@ class OrbitCurve extends THREE.Curve {
 
 const nebula = createNebula(settings);
 camera.add(nebula.mesh);
+nebula.mesh.userData.basePos = nebula.mesh.position.clone();
 
 const backdrop = createBackdrop(settings);
 scene.add(backdrop.points);
@@ -178,8 +179,17 @@ function animate(timestamp = 0) {
   orbitSystem.dust.material.uniforms.uTime.value = time;
   orbitSystem.sparkCloud.material.uniforms.uTime.value = time;
   backdrop.material.uniforms.uTime.value = time * 0.45;
+  updateBackdropNovas(backdrop, cameraTime);
   updateMeteors(meteors, cameraTime);
   nebula.material.uniforms.uTime.value = time * 0.06;
+  const swayAmt = settings.cameraSway;
+  const nebTargetX = Math.sin(cameraTime * 0.19 + 2.1) * 0.055 * swayAmt;
+  const nebTargetY = Math.cos(cameraTime * 0.23 + 0.3) * 0.034 * swayAmt;
+  nebula.mesh.position.set(
+    nebula.mesh.userData.basePos.x + nebTargetX * 7.5,
+    nebula.mesh.userData.basePos.y + nebTargetY * 7.5,
+    nebula.mesh.userData.basePos.z,
+  );
   planet.surface.material.uniforms.uTime.value = time;
   planet.surface.material.uniforms.uPulse.value = planetPulse;
   planet.glow.material.uniforms.uTime.value = time;
@@ -199,6 +209,14 @@ function animate(timestamp = 0) {
   planet.rayFan.material.rotation = -0.035 + Math.sin(time * 0.12) * 0.018;
   planet.rayFan.material.opacity = (0.36 + Math.sin(time * 0.16) * 0.035) * (0.92 + planetPulse * 0.18);
   planet.pinLights.material.uniforms.uTime.value = time;
+  const leakPulse = Math.pow(planetPulse, 1.8);
+  planet.lightLeak.material.opacity = planet.lightLeak.userData.baseOpacity * (0.62 + leakPulse * 0.78);
+  planet.lightLeak.scale.set(
+    planet.lightLeak.userData.baseScaleX * (1 + leakPulse * 0.08),
+    planet.lightLeak.userData.baseScaleY * (1 + leakPulse * 0.12),
+    1,
+  );
+  planet.lightLeak.material.rotation = Math.sin(time * 0.07) * 0.025;
 
   for (const trail of orbitSystem.allTrails) {
     trail.material.uniforms.uTime.value = time;
@@ -565,6 +583,7 @@ function createBackdrop({ backdrop, palette }) {
   const colors = new Float32Array(backdrop * 3);
   const sizes = new Float32Array(backdrop);
   const phases = new Float32Array(backdrop);
+  const novas = new Float32Array(backdrop);
 
   for (let i = 0; i < backdrop; i += 1) {
     const i3 = i * 3;
@@ -581,6 +600,7 @@ function createBackdrop({ backdrop, palette }) {
 
     sizes[i] = 0.45 + Math.random() * 1.25;
     phases[i] = Math.random() * Math.PI * 2;
+    novas[i] = 1;
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -588,6 +608,9 @@ function createBackdrop({ backdrop, palette }) {
   geometry.setAttribute("color", new THREE.BufferAttribute(colors, 3));
   geometry.setAttribute("aSize", new THREE.BufferAttribute(sizes, 1));
   geometry.setAttribute("aPhase", new THREE.BufferAttribute(phases, 1));
+  const novaAttr = new THREE.BufferAttribute(novas, 1);
+  novaAttr.setUsage(THREE.DynamicDrawUsage);
+  geometry.setAttribute("aNova", novaAttr);
 
   const material = new THREE.ShaderMaterial({
     transparent: true,
@@ -599,29 +622,36 @@ function createBackdrop({ backdrop, palette }) {
     vertexShader: `
       attribute float aSize;
       attribute float aPhase;
+      attribute float aNova;
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vNova;
       uniform float uTime;
 
       void main() {
         vec4 mvPosition = modelViewMatrix * vec4(position, 1.0);
         gl_Position = projectionMatrix * mvPosition;
-        gl_PointSize = aSize * (70.0 / max(1.0, -mvPosition.z));
-        vColor = color;
+        gl_PointSize = aSize * (70.0 / max(1.0, -mvPosition.z)) * sqrt(aNova);
+        vColor = color * aNova;
         vAlpha = 0.5 + sin(uTime * 0.7 + aPhase) * 0.28;
+        vNova = aNova;
       }
     `,
     fragmentShader: `
       varying vec3 vColor;
       varying float vAlpha;
+      varying float vNova;
 
       void main() {
         vec2 uv = gl_PointCoord - 0.5;
         float d = length(uv);
         float core = smoothstep(0.48, 0.0, d);
-        float spikeX = smoothstep(0.42, 0.0, abs(uv.y)) * smoothstep(0.5, 0.06, abs(uv.x));
-        float spikeY = smoothstep(0.42, 0.0, abs(uv.x)) * smoothstep(0.5, 0.06, abs(uv.y));
-        float spikes = (spikeX + spikeY) * 0.22 * smoothstep(0.5, 0.12, d);
+        float spikeBoost = clamp(vNova - 1.0, 0.0, 6.0);
+        float spikeStrength = 0.22 + spikeBoost * 0.45;
+        float spikeReach = mix(0.5, 0.62, smoothstep(0.0, 4.0, spikeBoost));
+        float spikeX = smoothstep(0.42, 0.0, abs(uv.y)) * smoothstep(spikeReach, 0.06, abs(uv.x));
+        float spikeY = smoothstep(0.42, 0.0, abs(uv.x)) * smoothstep(spikeReach, 0.06, abs(uv.y));
+        float spikes = (spikeX + spikeY) * spikeStrength * smoothstep(0.5, 0.12, d);
         float alpha = max(core, spikes) * vAlpha;
         if (alpha < 0.01) discard;
         gl_FragColor = vec4(vColor, alpha);
@@ -637,7 +667,52 @@ function createBackdrop({ backdrop, palette }) {
     geometry,
     material,
     points,
+    novaAttr: geometry.getAttribute("aNova"),
+    novaSlots: [null, null],
+    nextNova: 8 + Math.random() * 10,
   };
+}
+
+function updateBackdropNovas(backdrop, time) {
+  const attr = backdrop.novaAttr;
+  let dirty = false;
+  for (let i = 0; i < backdrop.novaSlots.length; i += 1) {
+    const slot = backdrop.novaSlots[i];
+    if (!slot) continue;
+    const elapsed = time - slot.startTime;
+    const totalDuration = slot.riseDuration + slot.fallDuration;
+    if (elapsed >= totalDuration) {
+      attr.array[slot.index] = 1;
+      backdrop.novaSlots[i] = null;
+      dirty = true;
+      continue;
+    }
+    let intensity;
+    if (elapsed < slot.riseDuration) {
+      const t = elapsed / slot.riseDuration;
+      intensity = 1 + slot.peak * (t * t * (3 - 2 * t));
+    } else {
+      const t = (elapsed - slot.riseDuration) / slot.fallDuration;
+      const eased = 1 - t;
+      intensity = 1 + slot.peak * eased * eased;
+    }
+    attr.array[slot.index] = intensity;
+    dirty = true;
+  }
+  if (time >= backdrop.nextNova) {
+    const freeSlot = backdrop.novaSlots.findIndex((s) => s === null);
+    if (freeSlot >= 0) {
+      backdrop.novaSlots[freeSlot] = {
+        index: Math.floor(Math.random() * attr.count),
+        startTime: time,
+        riseDuration: 1.4 + Math.random() * 0.9,
+        fallDuration: 3.5 + Math.random() * 2.2,
+        peak: 4.5 + Math.random() * 3.5,
+      };
+    }
+    backdrop.nextNova = time + 28 + Math.random() * 22;
+  }
+  if (dirty) attr.needsUpdate = true;
 }
 
 function createMeteors({ palette }) {
@@ -1179,8 +1254,11 @@ function createOrbitDust(orbits, count, occlusion = createPlanetOcclusionUniform
         vColor = color;
         float disk = 1.0 - smoothstep(uPlanetRadius * 0.9, uPlanetRadius * 1.06, length(p.xy - uPlanetCenter.xy));
         vPlanetFade = 1.0 - clamp(disk, 0.0, 1.0);
+        float armPhase = atan(p.y, p.x) * 3.0 + uTime * 0.18;
+        float densityWave = 0.62 + smoothstep(-0.55, 0.85, sin(armPhase)) * 0.78;
         vAlpha =
           (0.55 + sin(uTime * 2.0 + aPhase) * 0.24) *
+          densityWave *
           mix(0.78, 1.24, foreground) *
           mix(1.0, 0.62, lensBlur);
       }
@@ -1433,6 +1511,23 @@ function createPlanet({ palette }) {
   rayFan.position.set(0.48, 0.2, -1.15);
   rayFan.scale.set(7.8, 5.2, 1);
 
+  const lightLeak = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: createLightLeakTexture(),
+      color: inner.clone().lerp(WHITE, 0.32),
+      transparent: true,
+      opacity: 0.36,
+      blending: THREE.AdditiveBlending,
+      depthTest: true,
+      depthWrite: false,
+    }),
+  );
+  lightLeak.position.set(0.18, 0.12, -0.55);
+  lightLeak.scale.set(9.2, 1.4, 1);
+  lightLeak.userData.baseOpacity = lightLeak.material.opacity;
+  lightLeak.userData.baseScaleX = lightLeak.scale.x;
+  lightLeak.userData.baseScaleY = lightLeak.scale.y;
+
   const softHalo = createPlanetSoftHalo(inner, mid, outer);
   const limbBokeh = createPlanetLimbBokeh(palette, planetRadius);
 
@@ -1545,11 +1640,12 @@ function createPlanet({ palette }) {
   );
 
   const pinLights = createPlanetPinLights(palette);
-  group.add(rayFan, aura, softHalo, glow, limbBokeh, surface, pinLights);
+  group.add(rayFan, lightLeak, aura, softHalo, glow, limbBokeh, surface, pinLights);
 
   return {
     group,
     rayFan,
+    lightLeak,
     aura,
     softHalo,
     haloRing: softHalo,
@@ -1948,6 +2044,49 @@ function createRayFanTexture() {
   ctx.fillStyle = hollow;
   ctx.beginPath();
   ctx.arc(0, 0, 78, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.globalCompositeOperation = "source-over";
+
+  const texture = new THREE.CanvasTexture(canvasTexture);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createLightLeakTexture() {
+  const canvasTexture = document.createElement("canvas");
+  canvasTexture.width = 1024;
+  canvasTexture.height = 256;
+  const ctx = canvasTexture.getContext("2d");
+
+  ctx.fillStyle = "rgba(0, 0, 0, 0)";
+  ctx.fillRect(0, 0, 1024, 256);
+
+  const hotCore = ctx.createRadialGradient(512, 128, 0, 512, 128, 90);
+  hotCore.addColorStop(0, "rgba(255, 240, 255, 0.92)");
+  hotCore.addColorStop(0.4, "rgba(255, 180, 240, 0.42)");
+  hotCore.addColorStop(1, "rgba(255, 120, 220, 0)");
+  ctx.fillStyle = hotCore;
+  ctx.fillRect(0, 0, 1024, 256);
+
+  const streak = ctx.createLinearGradient(0, 128, 1024, 128);
+  streak.addColorStop(0, "rgba(255, 150, 240, 0)");
+  streak.addColorStop(0.36, "rgba(255, 170, 230, 0.18)");
+  streak.addColorStop(0.5, "rgba(255, 220, 255, 0.62)");
+  streak.addColorStop(0.64, "rgba(255, 170, 230, 0.18)");
+  streak.addColorStop(1, "rgba(255, 150, 240, 0)");
+  ctx.globalCompositeOperation = "lighter";
+  ctx.fillStyle = streak;
+  ctx.beginPath();
+  ctx.ellipse(512, 128, 510, 18, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  const thinLine = ctx.createLinearGradient(0, 128, 1024, 128);
+  thinLine.addColorStop(0, "rgba(255, 210, 255, 0)");
+  thinLine.addColorStop(0.5, "rgba(255, 240, 255, 0.95)");
+  thinLine.addColorStop(1, "rgba(255, 210, 255, 0)");
+  ctx.fillStyle = thinLine;
+  ctx.beginPath();
+  ctx.ellipse(512, 128, 480, 3.5, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.globalCompositeOperation = "source-over";
 
