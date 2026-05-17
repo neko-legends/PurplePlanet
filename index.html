@@ -6,8 +6,24 @@
     <meta name="theme-color" content="#020308" />
     <link rel="icon" href="data:," />
     <title>PurplePlanet</title>
+    <style>
+      html,
+      body {
+        width: 100%;
+        min-height: 100%;
+        margin: 0;
+        overflow: hidden;
+        background: #020308;
+      }
+
+      #wallpaper {
+        background: #020308;
+      }
+    </style>
   </head>
   <body>
+    <div class="wallpaper-title" aria-label="The Purple Planet - By Neko Legends">The Purple Planet - By Neko Legends</div>
+    <button class="music-toggle" type="button" aria-label="Turn music off">♪</button>
     <canvas id="wallpaper" aria-label="PurplePlanet orbital wallpaper"></canvas>
     <script type="module" src="/src/main.js"></script>
   </body>

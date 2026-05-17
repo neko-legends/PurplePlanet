@@ -1,6 +1,12 @@
 # PurplePlanet
 
-Lightweight Three.js orbital wallpaper for Lively Wallpaper, Wallpaper Engine, or a local browser window. It renders a fixed rim-lit planet and orbital plane while colorful light heads travel along the lanes, leaving glowing comet-like trails and particle wakes behind them.
+PurplePlanet is a public art installation by Neko Legends (`@softpoo` on X): a slow, luminous planet scene made to be used, studied, remixed, and enjoyed by anyone.
+
+Use it as a live wallpaper, Windows screensaver, website backdrop, game menu, learning reference, ambient display, or simply as a relaxing piece of motion art. The project is built with Three.js and designed to stay portable, inspectable, and easy to adapt.
+
+![PurplePlanet preview](docs/purpleplanet-preview.png)
+
+The scene renders a rim-lit purple planet, drifting orbital lanes, glowing particle wakes, counter-rotating bokeh, and a subtle breathing motion. It runs as a local browser experience, a Lively Wallpaper package, or the included lightweight Windows screensaver host.
 
 ## Run locally
 
@@ -71,6 +77,21 @@ Optional timeout:
 .\Install-Screensaver.bat -TimeoutSeconds 600
 ```
 
+## Music assets
+
+Future music should go in `public/music/` so Vite copies it into `live-wallpaper/` and the Lively package. The code can remain open source while music is documented separately in `public/music/ASSET-LICENSE.md`.
+
+## License
+
+PurplePlanet is MIT licensed. The bundled music has an additional asset note in `public/music/ASSET-LICENSE.md`.
+
+## Credits
+
+Created by Neko Legends (`@softpoo`), with AI development assistance from Eva.
+
+- Website: https://nekolegends.com
+- X/Twitter: https://x.com/softpoo
+
 ## Wallpaper tuning
 
 Use URL parameters when adding it to a wallpaper app:
@@ -79,10 +100,11 @@ Use URL parameters when adding it to a wallpaper app:
 - `?quality=balanced` keeps the aura, light leaks, spark heads, halo trails, and a small meteor pool enabled without postprocessing.
 - `?quality=high` adds denser trails, particles, postprocessing, and more motion.
 - `?quality=cinematic` is the default high-fidelity mode with dense particles, stronger glow, bloom, tone mapping, chromatic aberration, noise, and vignette.
-- `?fps=30` is the default cap. Use `?fps=24` for lower GPU use or `?fps=0` to render every display refresh.
+- `?fps=60` is the default cap. Use `?fps=30` or `?fps=24` for lower GPU use, or `?fps=0` to render every display refresh.
 - `?speed=0.7` for slower drift.
 - `?planetSpin=0.055` controls the slow planet surface rotation and the round bokeh accents near the planet edge. Use `0` to keep them fixed.
 - `?planetBreath=0.04` controls the slow planet grow/shrink amount, and `?planetBreathSpeed=0.36` controls the cycle rate. Use `?planetBreath=0` to disable it.
+- `?music=true` plays the bundled track by default. Use `?music=false` to disable it or `?musicVolume=0.25` to lower the volume.
 - `?pixelRatio=1.35` is the cinematic default. Lower it toward `1` for less GPU load.
 - `?postprocessing=false` disables the bloom/chromatic/noise/vignette pass if you need cinematic density without the extra shader pass.
 - `?bloom=0.5`, `?bloomRadius=0.44`, `?bloomThreshold=0.62`, or `?exposure=0.82` tune the cinematic glow.
@@ -94,7 +116,7 @@ Use URL parameters when adding it to a wallpaper app:
 Example:
 
 ```text
-http://127.0.0.1:5173/?quality=cinematic&fps=30&speed=0.85&pixelRatio=1.35&theme=nebula
+http://127.0.0.1:5173/?quality=cinematic&fps=60&speed=0.85&pixelRatio=1.35&theme=nebula
 ```
 
 Custom outside-to-inside palette:

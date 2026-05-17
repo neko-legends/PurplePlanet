@@ -68,14 +68,31 @@ function Resolve-WallpaperPath {
   throw "Could not find or build live-wallpaper/index.html."
 }
 
+function ConvertTo-RelativePath($baseDirectory, $targetPath) {
+  $base = (Resolve-Path -LiteralPath $baseDirectory).Path.TrimEnd("\", "/") + "\"
+  $target = (Resolve-Path -LiteralPath $targetPath).Path
+  $targetIsDirectory = Test-Path -LiteralPath $target -PathType Container
+  $targetForUri = if ($targetIsDirectory) { $target.TrimEnd("\", "/") + "\" } else { $target }
+
+  $baseUri = [Uri]::new($base)
+  $targetUri = [Uri]::new($targetForUri)
+  $relative = [Uri]::UnescapeDataString($baseUri.MakeRelativeUri($targetUri).ToString()).Replace("/", "\")
+
+  if ($targetIsDirectory) {
+    return $relative.TrimEnd("\")
+  }
+
+  return $relative
+}
+
 function Update-HostConfig($wallpaperPath) {
   if (-not (Test-Path -LiteralPath $hostConfig)) {
     throw "Missing config file: $hostConfig"
   }
 
   $config = Get-Content -LiteralPath $hostConfig -Raw | ConvertFrom-Json
-  $config.wallpaperPath = $wallpaperPath
-  $config.queryString = "quality=cinematic&fps=30&pixelRatio=1.35"
+  $config.wallpaperPath = ConvertTo-RelativePath (Split-Path -Parent $hostConfig) $wallpaperPath
+  $config.queryString = "quality=cinematic&fps=60&pixelRatio=1.35"
   $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $hostConfig -Encoding UTF8
 }
 

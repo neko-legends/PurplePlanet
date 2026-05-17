@@ -1,6 +1,10 @@
 # PurplePlanet
 
-Small live-wallpaper and screensaver host for Windows. It intentionally avoids Lively's gallery, updater, installer, alternate players, account features, and ML tools.
+PurplePlanet is a public art installation by Neko Legends (`@softpoo` on X): a slow, luminous planet scene made to be used, studied, remixed, and enjoyed by anyone.
+
+Use it as a live wallpaper, Windows screensaver, website backdrop, game menu, learning reference, ambient display, or simply as a relaxing piece of motion art.
+
+This folder contains the small live-wallpaper and screensaver host for Windows. It intentionally avoids Lively's gallery, updater, installer, alternate players, account features, and ML tools.
 
 It loads Lively-style local wallpaper folders and `.zip` / `.lively` packages that contain `LivelyInfo.json`. Web wallpapers are served from an embedded `127.0.0.1` static server, launched in the installed Chromium browser, and attached behind desktop icons. Picture, GIF, and video assets use a small generated HTML wrapper.
 
@@ -19,7 +23,7 @@ The app creates/uses `config.json` from this folder. By default it walks up from
 Useful overrides:
 
 ```powershell
-.\Run-PurplePlanet.bat --wallpaper "D:\forPublic\PurplePlanet\live-wallpaper" --layout span --query "quality=cinematic&fps=30&pixelRatio=1.35"
+.\Run-PurplePlanet.bat --wallpaper "..\live-wallpaper" --layout span --query "quality=cinematic&fps=60&pixelRatio=1.35"
 ```
 
 To rebuild the executable after code changes:
@@ -66,9 +70,9 @@ Build the `.scr` without changing Windows settings:
 
 ```json
 {
-  "wallpaperPath": "D:\\forPublic\\PurplePlanet\\live-wallpaper",
+  "wallpaperPath": "..\\live-wallpaper",
   "layout": "span",
-  "queryString": "quality=cinematic&fps=30&pixelRatio=1.35",
+  "queryString": "quality=cinematic&fps=60&pixelRatio=1.35",
   "browserExecutable": null,
   "attachToDesktop": true,
   "restartOnDisplayChange": true,
@@ -91,3 +95,16 @@ Supported Lively asset types:
 - `video`
 
 Application/game wallpapers are intentionally not included.
+
+The bundled PurplePlanet wallpaper is packaged as `webaudio` so its music track can play when the host permits audio autoplay.
+
+## License
+
+See `..\LICENSE`. PurplePlanet is MIT licensed. The bundled music has an additional asset note in `..\public\music\ASSET-LICENSE.md`.
+
+## Credits
+
+Created by Neko Legends (`@softpoo`), with AI development assistance from Eva.
+
+- Website: https://nekolegends.com
+- X/Twitter: https://x.com/softpoo

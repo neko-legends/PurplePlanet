@@ -3,7 +3,7 @@ param(
   [string]$Quality = "cinematic",
 
   [ValidateRange(0, 240)]
-  [int]$Fps = 30,
+  [int]$Fps = 60,
 
   [string]$Theme = "nebula",
 
@@ -37,7 +37,7 @@ if (-not (Test-Path -LiteralPath $vitePath)) {
 }
 
 Write-Host "Building PurplePlanet static wallpaper..."
-& node $vitePath build --outDir live-wallpaper --emptyOutDir=true
+& node $vitePath build --base ./ --outDir live-wallpaper --emptyOutDir=true
 if ($LASTEXITCODE -ne 0) {
   throw "Vite build failed."
 }
@@ -50,6 +50,7 @@ if (Test-Path -LiteralPath $stageDir) {
 
 New-Item -ItemType Directory -Path $stageDir | Out-Null
 Copy-Item -Path (Join-Path $buildDir "*") -Destination $stageDir -Recurse -Force
+Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination $stageDir -Force
 
 $query = "quality=$Quality&fps=$Fps&theme=$Theme&pixelRatio=$PixelRatio"
 $launcher = @"
@@ -75,10 +76,10 @@ $metadata = [ordered]@{
   AppVersion = "2.2.1.0"
   Title = "PurplePlanet"
   Desc = "Colorful lightweight Three.js orbital planet live wallpaper."
-  Author = "flashosophy"
+  Author = "Neko Legends (@softpoo)"
   License = "MIT"
-  Contact = "https://github.com/flashosophy/PurplePlanet"
-  Type = 1
+  Contact = "https://nekolegends.com"
+  Type = 2
   FileName = "wallpaper.html"
   Arguments = $null
   IsAbsolutePath = $false

@@ -49,6 +49,7 @@ internal sealed class AppConfig
         }
 
         ApplyOverrides(config, args);
+        ResolveWallpaperPath(config, path);
         return config;
     }
 
@@ -64,7 +65,7 @@ internal sealed class AppConfig
         {
             WallpaperPath = FindDefaultWallpaper(),
             Layout = "span",
-            QueryString = "quality=cinematic&fps=30&pixelRatio=1.35",
+            QueryString = "quality=cinematic&fps=60&pixelRatio=1.35",
             AttachToDesktop = true,
             RestartOnDisplayChange = true,
             StartupTimeoutMs = 10000
@@ -92,11 +93,36 @@ internal sealed class AppConfig
                     return package;
             }
         }
-
-        var fixedLive = @"D:\forPublic\PurplePlanet\live-wallpaper";
-        var fixedPackage = @"D:\forPublic\PurplePlanet\packages\PurplePlanet.lively";
-        return Directory.Exists(fixedLive) ? fixedLive : File.Exists(fixedPackage) ? fixedPackage : "";
+        return "";
     }
+
+    private static void ResolveWallpaperPath(AppConfig config, string configPath)
+    {
+        if (string.IsNullOrWhiteSpace(config.WallpaperPath) || IsHttpUrl(config.WallpaperPath))
+            return;
+
+        var expanded = Environment.ExpandEnvironmentVariables(config.WallpaperPath.Trim('"'));
+        var configDirectory = Path.GetDirectoryName(Path.GetFullPath(configPath)) ?? Directory.GetCurrentDirectory();
+        var resolved = Path.IsPathRooted(expanded)
+            ? expanded
+            : Path.GetFullPath(Path.Combine(configDirectory, expanded));
+
+        if (!WallpaperPathExists(resolved))
+        {
+            var fallback = FindDefaultWallpaper();
+            if (!string.IsNullOrWhiteSpace(fallback))
+                resolved = fallback;
+        }
+
+        config.WallpaperPath = resolved;
+    }
+
+    private static bool IsHttpUrl(string value) =>
+        Uri.TryCreate(value, UriKind.Absolute, out var uri) &&
+        (uri.Scheme == Uri.UriSchemeHttp || uri.Scheme == Uri.UriSchemeHttps);
+
+    private static bool WallpaperPathExists(string path) =>
+        Directory.Exists(path) || File.Exists(path);
 
     private static IEnumerable<DirectoryInfo> SelfAndParents(string path)
     {

@@ -13,6 +13,7 @@ import {
 import "./styles.css";
 
 const canvas = document.querySelector("#wallpaper");
+const music = setupMusic();
 const renderer = new THREE.WebGLRenderer({
   canvas,
   alpha: false,
@@ -34,6 +35,9 @@ const cameraSwayTarget = new THREE.Vector3();
 const _swayOffset = new THREE.Vector3();
 const planetWorldPosition = new THREE.Vector3();
 const orbitVisualOffset = new THREE.Vector3();
+const pointerUv = new THREE.Vector2(-1, -1);
+const lastPointerUv = new THREE.Vector2(-1, -1);
+const pointerScreen = new THREE.Vector2(0, 0);
 const clock = new THREE.Clock();
 const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
 const WHITE = new THREE.Color("#ffffff");
@@ -45,6 +49,15 @@ const THEMES = {
   plasma: ["#184cff", "#4545ff", "#922cff", "#ff1fb8", "#ff3758"],
   candy: ["#45dfff", "#5a7dff", "#ad5cff", "#ff66c7", "#ffd46f"],
 };
+const NEBULA_PLANE_WIDTH = 140;
+const NEBULA_PLANE_HEIGHT = 90;
+const NEBULA_PLANE_DISTANCE = 50;
+const NEBULA_VIEWPORT_PADDING = 1.36;
+const BACKDROP_SPREAD_FOV = 72;
+const BACKDROP_SPREAD_ASPECT = 3.45;
+const BACKDROP_SPREAD_PADDING = 1.18;
+const BACKDROP_NEAR_Z = 36;
+const BACKDROP_DEPTH = 54;
 const settings = readSettings();
 const runtimeStats = {
   targetFps: settings.fps,
@@ -110,12 +123,17 @@ system.add(orbitSystem.group);
 const planet = createPlanet(settings);
 system.add(planet.group);
 
+const pointerTrail = createPointerTrail(settings);
+
 let frameId = 0;
 let planetBaseScale = 1;
 let lastRenderTimestamp = 0;
 
 resize();
 window.addEventListener("resize", resize, { passive: true });
+window.addEventListener("pointermove", handlePointerMove, { passive: true });
+window.addEventListener("pointerleave", handlePointerLeave, { passive: true });
+window.addEventListener("blur", handlePointerLeave, { passive: true });
 document.addEventListener("visibilitychange", handleVisibility, false);
 animate();
 
@@ -177,7 +195,7 @@ function animate(timestamp = 0) {
   planet.glow.scale.setScalar(1 + planetPulse * 0.045);
   if (planet.limbBokeh) {
     planet.limbBokeh.scale.setScalar(1 + planetPulse * 0.032);
-    planet.limbBokeh.rotation.y = planet.surface.rotation.y;
+    planet.limbBokeh.rotation.y = -planet.surface.rotation.y;
     planet.limbBokeh.rotation.z = -time * 0.009;
     planet.limbBokeh.material.uniforms.uTime.value = time;
   }
@@ -247,6 +265,7 @@ function animate(timestamp = 0) {
   }
 
   updateCameraSway(cameraTime);
+  updatePointerTrail(pointerTrail, cameraTime);
   renderPipeline.render();
   recordRenderedFrame(timestamp);
 }
@@ -325,6 +344,33 @@ function resize() {
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(width, height, false);
   renderPipeline.setSize(width, height);
+  fitNebulaToViewport(pixelRatio);
+  pointerTrail.camera.left = -width / 2;
+  pointerTrail.camera.right = width / 2;
+  pointerTrail.camera.top = height / 2;
+  pointerTrail.camera.bottom = -height / 2;
+  pointerTrail.camera.updateProjectionMatrix();
+}
+
+function fitNebulaToViewport(pixelRatio) {
+  const distance = Math.max(1, Math.abs(nebula.mesh.position.z));
+  const visibleHeight = 2 * Math.tan(THREE.MathUtils.degToRad(camera.fov) * 0.5) * distance;
+  const visibleWidth = visibleHeight * camera.aspect;
+
+  nebula.mesh.scale.set(
+    (visibleWidth * NEBULA_VIEWPORT_PADDING) / NEBULA_PLANE_WIDTH,
+    (visibleHeight * NEBULA_VIEWPORT_PADDING) / NEBULA_PLANE_HEIGHT,
+    1,
+  );
+  nebula.material.uniforms.uPixelRatio.value = pixelRatio;
+}
+
+function handlePointerMove(event) {
+  pointerUv.set(event.clientX / Math.max(1, window.innerWidth), event.clientY / Math.max(1, window.innerHeight));
+}
+
+function handlePointerLeave() {
+  pointerUv.set(-1, -1);
 }
 
 function handleVisibility() {
@@ -376,11 +422,237 @@ function updateCameraSway(time) {
   camera.rotation.z += roll;
 }
 
+function setupMusic() {
+  const params = new URLSearchParams(window.location.search);
+  let wantsMusic = readBoolean(params.get("music"), true);
+  const button = document.querySelector(".music-toggle");
+
+  if (!button) {
+    return null;
+  }
+
+  const audio = new Audio(new URL("./music/The%20Purple%20Planet.mp3", window.location.href).href);
+  audio.loop = true;
+  audio.preload = "auto";
+  audio.volume = clamp(Number(params.get("musicVolume") ?? 0.42), 0, 1);
+
+  const updateButton = () => {
+    const playing = wantsMusic && !audio.paused;
+    button.hidden = false;
+    button.classList.toggle("is-on", playing);
+    button.classList.toggle("is-off", !wantsMusic);
+    button.classList.toggle("is-pending", wantsMusic && audio.paused);
+    button.textContent = wantsMusic ? "♪" : "×";
+    button.setAttribute(
+      "aria-label",
+      playing ? "Turn music off" : wantsMusic ? "Start music" : "Turn music on",
+    );
+  };
+
+  const tryPlay = async () => {
+    if (!wantsMusic) {
+      updateButton();
+      return;
+    }
+
+    try {
+      await audio.play();
+    } catch {
+      // Autoplay can be blocked; the visible toggle lets the next user click start it.
+    }
+    updateButton();
+  };
+
+  button.addEventListener("click", () => {
+    if (wantsMusic && !audio.paused) {
+      wantsMusic = false;
+      audio.pause();
+      updateButton();
+      return;
+    }
+
+    wantsMusic = true;
+    void tryPlay();
+  });
+  audio.addEventListener("play", updateButton);
+  audio.addEventListener("pause", updateButton);
+
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden && wantsMusic && audio.paused) {
+      void tryPlay();
+    }
+  });
+
+  updateButton();
+  void tryPlay();
+
+  return audio;
+}
+
+function createPointerTrail({ palette }) {
+  const scene = new THREE.Scene();
+  const camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 0, 10);
+  camera.position.z = 5;
+  const texture = createStarTexture();
+  const cursorTexture = createCursorTexture();
+  const pool = [];
+  const colors = [
+    samplePalette(palette, 1).clone().lerp(WHITE, 0.24),
+    samplePalette(palette, 0.72).clone().lerp(WHITE, 0.16),
+    samplePalette(palette, 0.42).clone().lerp(WHITE, 0.08),
+  ];
+
+  for (let i = 0; i < 72; i += 1) {
+    const material = new THREE.SpriteMaterial({
+      map: texture,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+    });
+    const sprite = new THREE.Sprite(material);
+    sprite.visible = false;
+    sprite.frustumCulled = false;
+    sprite.userData = {
+      age: 1,
+      life: 1,
+      spin: 0,
+      baseSize: 1,
+      driftX: 0,
+      driftY: 0,
+    };
+    pool.push(sprite);
+    scene.add(sprite);
+  }
+
+  const cursor = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: cursorTexture,
+      transparent: true,
+      opacity: 0,
+      depthTest: false,
+      depthWrite: false,
+    }),
+  );
+  cursor.renderOrder = 10;
+  cursor.frustumCulled = false;
+  cursor.scale.set(30, 30, 1);
+  scene.add(cursor);
+
+  return {
+    scene,
+    camera,
+    pool,
+    colors,
+    cursor,
+    next: 0,
+    lastEmit: 0,
+  };
+}
+
+function updatePointerTrail(trail, time) {
+  const width = window.innerWidth || 1;
+  const height = window.innerHeight || 1;
+  const pointerActive = pointerUv.x >= 0 && pointerUv.y >= 0;
+
+  if (pointerActive) {
+    pointerScreen.set(pointerUv.x * width - width / 2, height / 2 - pointerUv.y * height);
+    trail.cursor.visible = true;
+    trail.cursor.material.opacity += (1 - trail.cursor.material.opacity) * 0.28;
+    trail.cursor.position.set(pointerScreen.x + 8, pointerScreen.y - 11, 1);
+
+    if (lastPointerUv.x < 0 || lastPointerUv.y < 0) {
+      lastPointerUv.copy(pointerUv);
+    }
+
+    const dx = (pointerUv.x - lastPointerUv.x) * width;
+    const dy = (pointerUv.y - lastPointerUv.y) * height;
+    const distance = Math.hypot(dx, dy);
+    const emitCount = Math.min(9, Math.max(1, Math.floor(distance / 12)));
+
+    if (distance > 1.2 || time - trail.lastEmit > 0.045) {
+      for (let i = 0; i < emitCount; i += 1) {
+        const t = emitCount <= 1 ? 1 : i / (emitCount - 1);
+        const x = lerp(lastPointerUv.x, pointerUv.x, t);
+        const y = lerp(lastPointerUv.y, pointerUv.y, t);
+        emitPointerSpark(trail, x, y, dx, dy, width, height, time);
+      }
+      trail.lastEmit = time;
+    }
+
+    lastPointerUv.copy(pointerUv);
+  } else {
+    lastPointerUv.set(-1, -1);
+    trail.cursor.material.opacity *= 0.78;
+    if (trail.cursor.material.opacity < 0.02) {
+      trail.cursor.visible = false;
+      trail.cursor.material.opacity = 0;
+    }
+  }
+
+  for (const sprite of trail.pool) {
+    if (!sprite.visible) {
+      continue;
+    }
+
+    const data = sprite.userData;
+    data.age += 1 / Math.max(1, settings.fps || 30);
+    const fade = 1 - clamp(data.age / data.life, 0, 1);
+    if (fade <= 0) {
+      sprite.visible = false;
+      sprite.material.opacity = 0;
+      continue;
+    }
+
+    sprite.position.x += data.driftX;
+    sprite.position.y += data.driftY;
+    sprite.material.opacity = data.opacity * fade * fade;
+    sprite.material.rotation += data.spin;
+    const scale = data.baseSize * (0.7 + (1 - fade) * 0.82);
+    sprite.scale.set(scale, scale * data.aspect, 1);
+  }
+}
+
+function emitPointerSpark(trail, uvX, uvY, dx, dy, width, height, time) {
+  const sprite = trail.pool[trail.next];
+  trail.next = (trail.next + 1) % trail.pool.length;
+
+  const speed = Math.min(1, Math.hypot(dx, dy) / 90);
+  const angle = Math.atan2(-dy, dx || 0.001);
+  const scatter = (Math.random() - 0.5) * (18 + speed * 28);
+  const size = 9 + Math.random() * 26 + speed * 16;
+  const color = trail.colors[Math.floor(Math.random() * trail.colors.length)];
+  const data = sprite.userData;
+
+  sprite.visible = true;
+  sprite.position.set(
+    uvX * width - width / 2 + Math.cos(angle + Math.PI / 2) * scatter,
+    height / 2 - uvY * height + Math.sin(angle + Math.PI / 2) * scatter,
+    0,
+  );
+  sprite.material.color.copy(color);
+  sprite.material.rotation = Math.random() * Math.PI * 2 + time * 0.2;
+  sprite.material.opacity = 0.62 + Math.random() * 0.34;
+  data.age = 0;
+  data.life = 0.42 + Math.random() * 0.34;
+  data.opacity = sprite.material.opacity;
+  data.baseSize = size;
+  data.aspect = 0.44 + Math.random() * 0.68;
+  data.spin = (Math.random() - 0.5) * 0.22;
+  data.driftX = -Math.cos(angle) * (0.24 + speed * 1.1) + (Math.random() - 0.5) * 0.42;
+  data.driftY = Math.sin(angle) * (0.24 + speed * 1.1) + (Math.random() - 0.5) * 0.42;
+  sprite.scale.set(size, size * data.aspect, 1);
+}
+
 function createRenderPipeline({ postprocessing, bloomStrength, bloomRadius, bloomThreshold, exposure }) {
   if (!postprocessing) {
     return {
       bloomEffect: null,
-      render: () => renderer.render(scene, camera),
+      render: () => {
+        renderer.render(scene, camera);
+        renderPointerTrail();
+      },
       setSize: () => {}
     };
   }
@@ -426,9 +698,20 @@ function createRenderPipeline({ postprocessing, bloomStrength, bloomRadius, bloo
 
   return {
     bloomEffect,
-    render: () => composer.render(),
+    render: () => {
+      composer.render();
+      renderPointerTrail();
+    },
     setSize: (width, height) => composer.setSize(width, height, false),
   };
+}
+
+function renderPointerTrail() {
+  const previousAutoClear = renderer.autoClear;
+  renderer.autoClear = false;
+  renderer.clearDepth();
+  renderer.render(pointerTrail.scene, pointerTrail.camera);
+  renderer.autoClear = previousAutoClear;
 }
 
 function readSettings() {
@@ -436,7 +719,7 @@ function readSettings() {
   const quality = params.get("quality") || "cinematic";
   const qualityMap = {
     low: {
-      backdrop: 650,
+      backdrop: 1200,
       dust: 520,
       sparkDust: 650,
       segments: 104,
@@ -457,7 +740,7 @@ function readSettings() {
       pixelRatio: 0.9,
     },
     balanced: {
-      backdrop: 1400,
+      backdrop: 2800,
       dust: 1800,
       sparkDust: 2400,
       segments: 160,
@@ -478,7 +761,7 @@ function readSettings() {
       pixelRatio: 1,
     },
     high: {
-      backdrop: 2000,
+      backdrop: 5200,
       dust: 3600,
       sparkDust: 5000,
       segments: 220,
@@ -495,11 +778,11 @@ function readSettings() {
       bloomStrength: 0.62,
       bloomRadius: 0.52,
       bloomThreshold: 0.46,
-      fps: 30,
+      fps: 60,
       pixelRatio: 1.1,
     },
     cinematic: {
-      backdrop: 3600,
+      backdrop: 9500,
       dust: 36000,
       sparkDust: 52000,
       segments: 420,
@@ -516,7 +799,7 @@ function readSettings() {
       bloomStrength: 0.64,
       bloomRadius: 0.58,
       bloomThreshold: 0.5,
-      fps: 30,
+      fps: 60,
       pixelRatio: 1.35,
     },
   };
@@ -557,6 +840,7 @@ function createNebula({ palette }) {
     side: THREE.DoubleSide,
     uniforms: {
       uTime: { value: 0 },
+      uPixelRatio: { value: 1 },
       uOuter: { value: samplePalette(palette, 0).clone() },
       uMid: { value: samplePalette(palette, 0.55).clone() },
       uInner: { value: samplePalette(palette, 1).clone() },
@@ -571,6 +855,7 @@ function createNebula({ palette }) {
     `,
     fragmentShader: `
       uniform float uTime;
+      uniform float uPixelRatio;
       uniform vec3 uOuter;
       uniform vec3 uMid;
       uniform vec3 uInner;
@@ -600,6 +885,35 @@ function createNebula({ palette }) {
           amplitude *= 0.5;
         }
         return value;
+      }
+
+      float screenStar(vec2 pixel, float cellSize, float density, float radius, float twinkleRate) {
+        vec2 cell = floor(pixel / cellSize);
+        vec2 local = fract(pixel / cellSize) * cellSize;
+        float seed = hash(cell);
+        float present = step(seed, density);
+        vec2 star = vec2(
+          hash(cell + vec2(7.1, 19.7)),
+          hash(cell + vec2(31.4, 5.8))
+        ) * cellSize;
+        vec2 delta = local - star;
+        float d = length(delta);
+        float core = exp(-(d * d) / max(0.001, radius * radius));
+        float rayX = exp(-abs(delta.y) * 1.75) * exp(-abs(delta.x) * 0.13);
+        float rayY = exp(-abs(delta.x) * 1.75) * exp(-abs(delta.y) * 0.13);
+        float twinkle = 0.72 + sin(uTime * twinkleRate + seed * 31.416) * 0.28;
+        return present * (core + (rayX + rayY) * 0.035) * twinkle * (0.58 + seed * 0.72);
+      }
+
+      vec3 screenStars(vec2 fragCoord) {
+        vec2 pixel = fragCoord / max(0.25, uPixelRatio);
+        float tiny = screenStar(pixel + vec2(11.0, 23.0), 28.0, 0.09, 0.56, 0.74);
+        float fine = screenStar(pixel + vec2(47.0, 13.0), 44.0, 0.22, 0.78, 0.52);
+        float bright = screenStar(pixel + vec2(103.0, 71.0), 82.0, 0.34, 1.08, 0.34);
+        float colorSeed = hash(floor(pixel / 88.0) + vec2(4.0, 9.0));
+        vec3 coolTint = mix(uOuter, uMid, colorSeed);
+        vec3 hotTint = mix(vec3(1.0, 0.82, 1.0), uInner, colorSeed * 0.45);
+        return coolTint * (tiny * 0.34 + fine * 0.58) + hotTint * bright * 0.72;
       }
 
       float rayFan(vec2 origin, vec2 uv, float direction) {
@@ -643,14 +957,15 @@ function createNebula({ palette }) {
         color *= mix(1.0, 0.24, shadow * 0.66 + voids * 0.82);
         color += uOuter * fineVeil * cloud * 0.012;
         color *= 0.07 + vignette * 0.62;
+        color += screenStars(gl_FragCoord.xy) * (0.16 + vignette * 0.22);
 
         gl_FragColor = vec4(color, 1.0);
       }
     `,
   });
 
-  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(140, 90), material);
-  mesh.position.set(0, 0, -50);
+  const mesh = new THREE.Mesh(new THREE.PlaneGeometry(NEBULA_PLANE_WIDTH, NEBULA_PLANE_HEIGHT), material);
+  mesh.position.set(0, 0, -NEBULA_PLANE_DISTANCE);
   mesh.renderOrder = -1000;
   return { mesh, material };
 }
@@ -664,9 +979,18 @@ function createBackdrop({ backdrop, palette }) {
 
   for (let i = 0; i < backdrop; i += 1) {
     const i3 = i * 3;
-    positions[i3] = (Math.random() - 0.5) * 54;
-    positions[i3 + 1] = (Math.random() - 0.5) * 30;
-    positions[i3 + 2] = -34 - Math.random() * 24;
+    const depth = Math.pow(Math.random(), 0.74);
+    const z = -BACKDROP_NEAR_Z - depth * BACKDROP_DEPTH;
+    const distance = Math.abs(z) + 12;
+    const halfHeight =
+      Math.tan(THREE.MathUtils.degToRad(BACKDROP_SPREAD_FOV) * 0.5) *
+      distance *
+      BACKDROP_SPREAD_PADDING;
+    const halfWidth = halfHeight * BACKDROP_SPREAD_ASPECT;
+
+    positions[i3] = (Math.random() - 0.5) * halfWidth * 2;
+    positions[i3 + 1] = (Math.random() - 0.5) * halfHeight * 2;
+    positions[i3 + 2] = z;
 
     const color = samplePalette(palette, Math.random())
       .lerp(WHITE, Math.random() * 0.28)
@@ -1794,27 +2118,25 @@ function createPlanetSoftHalo(inner, mid, outer) {
 }
 
 function createPlanetLimbBokeh(palette, planetRadius) {
-  const count = 96;
+  const count = 132;
   const positions = new Float32Array(count * 3);
   const colors = new Float32Array(count * 3);
   const sizes = new Float32Array(count);
   const phases = new Float32Array(count);
   const alphas = new Float32Array(count);
+  const goldenAngle = Math.PI * (3 - Math.sqrt(5));
 
   for (let i = 0; i < count; i += 1) {
     const i3 = i * 3;
-    const cluster = Math.random();
-    const angle =
-      cluster < 0.58
-        ? -0.28 + Math.random() * 2.42
-        : Math.random() * Math.PI * 2;
-    const radius = planetRadius * (1.02 + Math.pow(Math.random(), 0.72) * 0.36);
-    const vertical = 0.92 + Math.random() * 0.14;
-    const haze = Math.random() < 0.36 ? 0.22 + Math.random() * 0.28 : 0;
+    const bandY = 1 - ((i + 0.5) / count) * 2;
+    const latitude = Math.asin(bandY) * 0.78 + (Math.random() - 0.5) * 0.22;
+    const longitude = i * goldenAngle + (Math.random() - 0.5) * 0.38;
+    const shellRadius = planetRadius * (1.09 + Math.pow(Math.random(), 0.68) * 0.48);
+    const horizontal = Math.cos(latitude);
 
-    positions[i3] = Math.cos(angle) * (radius + haze);
-    positions[i3 + 1] = Math.sin(angle) * radius * vertical + (Math.random() - 0.5) * 0.08;
-    positions[i3 + 2] = -0.34 - Math.random() * 0.72;
+    positions[i3] = Math.cos(longitude) * horizontal * shellRadius;
+    positions[i3 + 1] = Math.sin(latitude) * shellRadius * (0.94 + Math.random() * 0.1);
+    positions[i3 + 2] = Math.sin(longitude) * horizontal * shellRadius;
 
     const color = samplePalette(palette, 0.54 + Math.random() * 0.46)
       .lerp(WHITE, 0.12 + Math.random() * 0.28)
@@ -1823,9 +2145,9 @@ function createPlanetLimbBokeh(palette, planetRadius) {
     colors[i3 + 1] = color.g;
     colors[i3 + 2] = color.b;
 
-    sizes[i] = Math.random() < 0.18 ? 0.74 + Math.random() * 0.72 : 0.26 + Math.random() * 0.48;
+    sizes[i] = Math.random() < 0.18 ? 0.62 + Math.random() * 0.62 : 0.22 + Math.random() * 0.42;
     phases[i] = Math.random() * Math.PI * 2;
-    alphas[i] = 0.08 + Math.random() * 0.28;
+    alphas[i] = 0.075 + Math.random() * 0.24;
   }
 
   const geometry = new THREE.BufferGeometry();
@@ -1999,6 +2321,49 @@ function createStarTexture() {
   ctx.arc(48, 48, 6, 0, Math.PI * 2);
   ctx.fillStyle = "rgba(255, 255, 255, 0.98)";
   ctx.fill();
+
+  const texture = new THREE.CanvasTexture(canvasTexture);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function createCursorTexture() {
+  const canvasTexture = document.createElement("canvas");
+  canvasTexture.width = 96;
+  canvasTexture.height = 96;
+  const ctx = canvasTexture.getContext("2d");
+
+  ctx.clearRect(0, 0, 96, 96);
+  ctx.save();
+  ctx.translate(24, 14);
+  ctx.rotate(-0.18);
+
+  ctx.shadowColor = "rgba(255, 255, 255, 0.9)";
+  ctx.shadowBlur = 8;
+  ctx.lineJoin = "round";
+  ctx.lineCap = "round";
+
+  ctx.beginPath();
+  ctx.moveTo(0, 0);
+  ctx.lineTo(0, 54);
+  ctx.lineTo(14, 42);
+  ctx.lineTo(24, 65);
+  ctx.lineTo(34, 61);
+  ctx.lineTo(24, 38);
+  ctx.lineTo(42, 38);
+  ctx.closePath();
+
+  ctx.fillStyle = "rgba(7, 7, 12, 0.96)";
+  ctx.strokeStyle = "rgba(255, 255, 255, 0.96)";
+  ctx.lineWidth = 4;
+  ctx.stroke();
+  ctx.fill();
+
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = "rgba(130, 82, 255, 0.45)";
+  ctx.lineWidth = 1.4;
+  ctx.stroke();
+  ctx.restore();
 
   const texture = new THREE.CanvasTexture(canvasTexture);
   texture.colorSpace = THREE.SRGBColorSpace;
@@ -2292,6 +2657,10 @@ function clamp(value, min, max) {
   }
 
   return Math.min(max, Math.max(min, value));
+}
+
+function lerp(a, b, t) {
+  return a + (b - a) * t;
 }
 
 function smoothStep01(value) {
