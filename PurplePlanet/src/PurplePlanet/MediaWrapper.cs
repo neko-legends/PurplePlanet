@@ -1,6 +1,6 @@
 using System.Text;
 
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal static class MediaWrapper
 {
@@ -21,7 +21,7 @@ internal static class MediaWrapper
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>LivelyLite Media Wallpaper</title>
+    <title>PurplePlanet Media Wallpaper</title>
     <style>
       html, body {
         width: 100%;

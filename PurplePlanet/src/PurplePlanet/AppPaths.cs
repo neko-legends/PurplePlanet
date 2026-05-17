@@ -1,10 +1,10 @@
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal static class AppPaths
 {
     public static string AppData { get; } = Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "LivelyLite");
+        "PurplePlanet");
 
     public static string PackageCache { get; } = Ensure(Path.Combine(AppData, "Packages"));
     public static string BrowserProfiles { get; } = Ensure(Path.Combine(AppData, "BrowserProfiles"));

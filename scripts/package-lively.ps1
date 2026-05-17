@@ -1,6 +1,6 @@
 param(
   [ValidateSet("low", "balanced", "high", "cinematic")]
-  [string]$Quality = "balanced",
+  [string]$Quality = "cinematic",
 
   [ValidateRange(0, 240)]
   [int]$Fps = 30,
@@ -8,7 +8,7 @@ param(
   [string]$Theme = "nebula",
 
   [ValidateRange(0.5, 3.0)]
-  [double]$PixelRatio = 1.1
+  [double]$PixelRatio = 1.35
 )
 
 $ErrorActionPreference = "Stop"

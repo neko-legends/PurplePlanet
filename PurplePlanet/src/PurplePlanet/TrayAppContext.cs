@@ -1,7 +1,7 @@
 using Microsoft.Win32;
 using System.Diagnostics;
 
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal sealed class TrayAppContext : ApplicationContext
 {
@@ -20,7 +20,7 @@ internal sealed class TrayAppContext : ApplicationContext
         {
             Icon = SystemIcons.Application,
             Visible = true,
-            Text = "LivelyLite",
+            Text = "PurplePlanet",
             ContextMenuStrip = BuildMenu()
         };
 
@@ -54,14 +54,14 @@ internal sealed class TrayAppContext : ApplicationContext
         try
         {
             host.Start(config);
-            var title = host.CurrentAsset?.Title ?? "LivelyLite";
+            var title = host.CurrentAsset?.Title ?? "PurplePlanet";
             notifyIcon.Text = title.Length > 63 ? title[..63] : title;
-            notifyIcon.ShowBalloonTip(1500, "LivelyLite", $"Loaded {title}", ToolTipIcon.Info);
+            notifyIcon.ShowBalloonTip(1500, "PurplePlanet", $"Loaded {title}", ToolTipIcon.Info);
         }
         catch (Exception ex)
         {
-            notifyIcon.ShowBalloonTip(4000, "LivelyLite error", ex.Message, ToolTipIcon.Error);
-            MessageBox.Show(ex.ToString(), "LivelyLite", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            notifyIcon.ShowBalloonTip(4000, "PurplePlanet error", ex.Message, ToolTipIcon.Error);
+            MessageBox.Show(ex.ToString(), "PurplePlanet", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 
@@ -89,7 +89,7 @@ internal sealed class TrayAppContext : ApplicationContext
         }
         catch (Exception ex)
         {
-            MessageBox.Show(ex.Message, "LivelyLite", MessageBoxButtons.OK, MessageBoxIcon.Error);
+            MessageBox.Show(ex.Message, "PurplePlanet", MessageBoxButtons.OK, MessageBoxIcon.Error);
         }
     }
 

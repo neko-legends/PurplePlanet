@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal sealed class BrowserJob : IDisposable
 {

@@ -3,7 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal enum WallpaperKind
 {
@@ -74,7 +74,7 @@ internal sealed class LivelyAsset
                 config.QueryString),
             WallpaperKind.Url or WallpaperKind.VideoStream => AppendQuery(Info.FileName ?? "", config.QueryString),
             WallpaperKind.Picture or WallpaperKind.Gif or WallpaperKind.Video => MediaWrapper.GetUrl(ResolveAssetFile(), Kind),
-            _ => throw new NotSupportedException($"LivelyLite does not support '{Kind}' wallpapers.")
+            _ => throw new NotSupportedException($"PurplePlanet does not support '{Kind}' wallpapers.")
         };
     }
 

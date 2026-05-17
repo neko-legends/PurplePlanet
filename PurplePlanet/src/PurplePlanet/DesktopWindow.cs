@@ -1,4 +1,4 @@
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal static class DesktopWindow
 {

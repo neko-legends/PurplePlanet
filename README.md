@@ -49,19 +49,44 @@ To preview the built wallpaper in your browser:
 Preview-LiveWallpaper.bat
 ```
 
+## Use as a Windows screensaver
+
+Double-click this from the repo root:
+
+```text
+Install-Screensaver.bat
+```
+
+The installer builds/uses `live-wallpaper/`, updates `PurplePlanet\config.json`, creates `PurplePlanet.scr`, registers it for the current Windows user, and opens Windows Screen Saver Settings. It does not need admin rights.
+
+Power users can run it from a terminal:
+
+```powershell
+.\Install-Screensaver.bat
+```
+
+Optional timeout:
+
+```powershell
+.\Install-Screensaver.bat -TimeoutSeconds 600
+```
+
 ## Wallpaper tuning
 
 Use URL parameters when adding it to a wallpaper app:
 
-- `?quality=low` for the lightest mode.
-- `?quality=balanced` for a lighter everyday mode.
-- `?quality=high` for denser sparkle.
-- `?quality=cinematic` for the default high-fidelity mode with denser particles and stronger postprocessing.
-- `?fps=30` caps rendering for lower GPU use. Use `?fps=24` for a lighter wallpaper or `?fps=0` to render every display refresh.
+- `?quality=low` for the lightest minimal mode.
+- `?quality=balanced` keeps the aura, light leaks, spark heads, halo trails, and a small meteor pool enabled without postprocessing.
+- `?quality=high` adds denser trails, particles, postprocessing, and more motion.
+- `?quality=cinematic` is the default high-fidelity mode with dense particles, stronger glow, bloom, tone mapping, chromatic aberration, noise, and vignette.
+- `?fps=30` is the default cap. Use `?fps=24` for lower GPU use or `?fps=0` to render every display refresh.
 - `?speed=0.7` for slower drift.
-- `?pixelRatio=1` to reduce GPU load on high-DPI displays.
-- `?bloom=0.5`, `?bloomRadius=0.44`, `?bloomThreshold=0.62`, or `?exposure=0.82` to tune the cinematic glow.
-- `?cameraSway=0` disables the slow handheld camera drift. `?cameraSway=1.5` makes it more noticeable.
+- `?planetSpin=0.055` controls the slow planet surface rotation and the round bokeh accents near the planet edge. Use `0` to keep them fixed.
+- `?planetBreath=0.04` controls the slow planet grow/shrink amount, and `?planetBreathSpeed=0.36` controls the cycle rate. Use `?planetBreath=0` to disable it.
+- `?pixelRatio=1.35` is the cinematic default. Lower it toward `1` for less GPU load.
+- `?postprocessing=false` disables the bloom/chromatic/noise/vignette pass if you need cinematic density without the extra shader pass.
+- `?bloom=0.5`, `?bloomRadius=0.44`, `?bloomThreshold=0.62`, or `?exposure=0.82` tune the cinematic glow.
+- `?cameraSway=0` disables the slow camera drift. Low mode disables it by default.
 - `?theme=nebula` for the default blue-to-pink gradient.
 - `?theme=aurora`, `?theme=ultraviolet`, `?theme=plasma`, or `?theme=candy` for alternate built-in palettes.
 - `?palette=245dff,5146ff,8c35ff,f725d6,ff2f8a` for a custom gradient. Colors are ordered from outside rings to inside rings.
@@ -69,7 +94,7 @@ Use URL parameters when adding it to a wallpaper app:
 Example:
 
 ```text
-http://127.0.0.1:5173/?quality=balanced&fps=30&speed=0.85&pixelRatio=1.2&theme=nebula
+http://127.0.0.1:5173/?quality=cinematic&fps=30&speed=0.85&pixelRatio=1.35&theme=nebula
 ```
 
 Custom outside-to-inside palette:

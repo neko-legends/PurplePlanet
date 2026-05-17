@@ -1,6 +1,6 @@
 using System.Text.Json;
 
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal sealed class AppConfig
 {
@@ -22,9 +22,13 @@ internal sealed class AppConfig
         if (File.Exists(local))
             return local;
 
+        var appLocal = Path.Combine(AppContext.BaseDirectory, "config.json");
+        if (File.Exists(appLocal))
+            return appLocal;
+
         var appData = Path.Combine(
             Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-            "LivelyLite");
+            "PurplePlanet");
         Directory.CreateDirectory(appData);
         return Path.Combine(appData, "config.json");
     }
@@ -60,7 +64,7 @@ internal sealed class AppConfig
         {
             WallpaperPath = FindDefaultWallpaper(),
             Layout = "span",
-            QueryString = "quality=balanced&fps=30&pixelRatio=1",
+            QueryString = "quality=cinematic&fps=30&pixelRatio=1.35",
             AttachToDesktop = true,
             RestartOnDisplayChange = true,
             StartupTimeoutMs = 10000

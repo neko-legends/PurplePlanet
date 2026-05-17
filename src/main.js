@@ -16,8 +16,8 @@ const canvas = document.querySelector("#wallpaper");
 const renderer = new THREE.WebGLRenderer({
   canvas,
   alpha: false,
-  antialias: true,
-  powerPreference: "high-performance",
+  antialias: false,
+  powerPreference: "low-power",
 });
 
 renderer.outputColorSpace = THREE.SRGBColorSpace;
@@ -66,44 +66,7 @@ window.PurplePlanet = {
 renderer.toneMapping = THREE.NoToneMapping;
 
 scene.add(camera);
-const bloomEffect = new BloomEffect({
-  intensity: settings.bloomStrength,
-  radius: settings.bloomRadius,
-  luminanceThreshold: settings.bloomThreshold,
-  luminanceSmoothing: 0.15,
-  mipmapBlur: true,
-});
-const toneMappingEffect = new ToneMappingEffect({
-  mode: ToneMappingMode.ACES_FILMIC,
-  resolution: 256,
-  whitePoint: 4.0,
-});
-toneMappingEffect.exposure = settings.exposure;
-const chromaticAberrationEffect = new ChromaticAberrationEffect({
-  offset: new THREE.Vector2(0.0006, 0.0006),
-  radialModulation: true,
-  modulationOffset: 0.2,
-});
-const noiseEffect = new NoiseEffect({ premultiply: true });
-noiseEffect.blendMode.opacity.value = 0.028;
-const vignetteEffect = new VignetteEffect({
-  offset: 0.38,
-  darkness: 0.52,
-});
-const composer = new EffectComposer(renderer, {
-  frameBufferType: THREE.HalfFloatType,
-});
-composer.addPass(new RenderPass(scene, camera));
-composer.addPass(
-  new EffectPass(
-    camera,
-    bloomEffect,
-    chromaticAberrationEffect,
-    noiseEffect,
-    vignetteEffect,
-    toneMappingEffect,
-  ),
-);
+const renderPipeline = createRenderPipeline(settings);
 
 class OrbitCurve extends THREE.Curve {
   constructor(rx, ry, start, length, depth = flatOrbitDepth()) {
@@ -168,10 +131,14 @@ function animate(timestamp = 0) {
   const time = elapsed * settings.speed * motionScale;
   const cameraTime = elapsed * motionScale;
   const planetPulse = 0.5 + Math.sin(cameraTime * 0.42 + Math.sin(cameraTime * 0.11) * 0.7) * 0.5;
-  const planetPulseScale = 1 + (planetPulse - 0.5) * 0.026;
+  const planetBreath = Math.sin(cameraTime * settings.planetBreathSpeed + Math.sin(cameraTime * 0.047) * 0.26);
+  const planetPulseScale = 1 + (planetPulse - 0.5) * 0.012;
+  const planetBreathScale = 1 + planetBreath * settings.planetBreath;
 
-  planet.group.scale.setScalar(planetBaseScale * planetPulseScale);
-  bloomEffect.intensity = settings.bloomStrength * (0.96 + planetPulse * 0.08);
+  planet.group.scale.setScalar(planetBaseScale * planetPulseScale * planetBreathScale);
+  if (renderPipeline.bloomEffect) {
+    renderPipeline.bloomEffect.intensity = settings.bloomStrength * (0.96 + planetPulse * 0.08);
+  }
   orbitSystem.occlusion.radius.value =
     (1.58 * planet.group.scale.x) / orbitSystem.group.scale.x;
 
@@ -192,31 +159,46 @@ function animate(timestamp = 0) {
   );
   planet.surface.material.uniforms.uTime.value = time;
   planet.surface.material.uniforms.uPulse.value = planetPulse;
+  planet.surface.rotation.y = time * settings.planetSpin;
   planet.glow.material.uniforms.uTime.value = time;
   planet.glow.material.uniforms.uPulse.value = planetPulse;
-  planet.aura.material.rotation = time * 0.025;
-  planet.aura.scale.copy(planet.aura.userData.baseScale).multiplyScalar(1 + planetPulse * 0.045);
-  planet.aura.material.opacity = planet.aura.userData.baseOpacity * (0.88 + planetPulse * 0.26);
-  planet.softHalo.scale.setScalar(1 + planetPulse * 0.038);
-  planet.softHalo.rotation.z = time * 0.006;
-  for (const layer of planet.softHalo.children) {
-    layer.material.opacity = layer.userData.baseOpacity * (0.8 + planetPulse * 0.42);
+  if (planet.aura) {
+    planet.aura.material.rotation = time * 0.025;
+    planet.aura.scale.copy(planet.aura.userData.baseScale).multiplyScalar(1 + planetPulse * 0.045);
+    planet.aura.material.opacity = planet.aura.userData.baseOpacity * (0.88 + planetPulse * 0.26);
+  }
+  if (planet.softHalo) {
+    planet.softHalo.scale.setScalar(1 + planetPulse * 0.038);
+    planet.softHalo.rotation.z = time * 0.006;
+    for (const layer of planet.softHalo.children) {
+      layer.material.opacity = layer.userData.baseOpacity * (0.8 + planetPulse * 0.42);
+    }
   }
   planet.glow.scale.setScalar(1 + planetPulse * 0.045);
-  planet.limbBokeh.scale.setScalar(1 + planetPulse * 0.032);
-  planet.limbBokeh.rotation.z = -time * 0.009;
-  planet.limbBokeh.material.uniforms.uTime.value = time;
-  planet.rayFan.material.rotation = -0.035 + Math.sin(time * 0.12) * 0.018;
-  planet.rayFan.material.opacity = (0.36 + Math.sin(time * 0.16) * 0.035) * (0.92 + planetPulse * 0.18);
-  planet.pinLights.material.uniforms.uTime.value = time;
+  if (planet.limbBokeh) {
+    planet.limbBokeh.scale.setScalar(1 + planetPulse * 0.032);
+    planet.limbBokeh.rotation.y = planet.surface.rotation.y;
+    planet.limbBokeh.rotation.z = -time * 0.009;
+    planet.limbBokeh.material.uniforms.uTime.value = time;
+  }
+  if (planet.rayFan) {
+    planet.rayFan.material.rotation = -0.035 + Math.sin(time * 0.12) * 0.018;
+    planet.rayFan.material.opacity = (0.36 + Math.sin(time * 0.16) * 0.035) * (0.92 + planetPulse * 0.18);
+  }
+  if (planet.pinLights) {
+    planet.pinLights.material.uniforms.uTime.value = time;
+    planet.pinLights.rotation.y = planet.surface.rotation.y;
+  }
   const leakPulse = Math.pow(planetPulse, 1.8);
-  planet.lightLeak.material.opacity = planet.lightLeak.userData.baseOpacity * (0.62 + leakPulse * 0.78);
-  planet.lightLeak.scale.set(
-    planet.lightLeak.userData.baseScaleX * (1 + leakPulse * 0.08),
-    planet.lightLeak.userData.baseScaleY * (1 + leakPulse * 0.12),
-    1,
-  );
-  planet.lightLeak.material.rotation = Math.sin(time * 0.07) * 0.025;
+  if (planet.lightLeak) {
+    planet.lightLeak.material.opacity = planet.lightLeak.userData.baseOpacity * (0.62 + leakPulse * 0.78);
+    planet.lightLeak.scale.set(
+      planet.lightLeak.userData.baseScaleX * (1 + leakPulse * 0.08),
+      planet.lightLeak.userData.baseScaleY * (1 + leakPulse * 0.12),
+      1,
+    );
+    planet.lightLeak.material.rotation = Math.sin(time * 0.07) * 0.025;
+  }
 
   for (const trail of orbitSystem.allTrails) {
     trail.material.uniforms.uTime.value = time;
@@ -265,7 +247,7 @@ function animate(timestamp = 0) {
   }
 
   updateCameraSway(cameraTime);
-  composer.render();
+  renderPipeline.render();
   recordRenderedFrame(timestamp);
 }
 
@@ -342,7 +324,7 @@ function resize() {
   const pixelRatio = Math.min(window.devicePixelRatio || 1, settings.pixelRatio);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(width, height, false);
-  composer.setSize(width, height, false);
+  renderPipeline.setSize(width, height);
 }
 
 function handleVisibility() {
@@ -394,82 +376,177 @@ function updateCameraSway(time) {
   camera.rotation.z += roll;
 }
 
+function createRenderPipeline({ postprocessing, bloomStrength, bloomRadius, bloomThreshold, exposure }) {
+  if (!postprocessing) {
+    return {
+      bloomEffect: null,
+      render: () => renderer.render(scene, camera),
+      setSize: () => {}
+    };
+  }
+
+  const bloomEffect = new BloomEffect({
+    intensity: bloomStrength,
+    radius: bloomRadius,
+    luminanceThreshold: bloomThreshold,
+    luminanceSmoothing: 0.15,
+    mipmapBlur: true,
+  });
+  const toneMappingEffect = new ToneMappingEffect({
+    mode: ToneMappingMode.ACES_FILMIC,
+    resolution: 256,
+    whitePoint: 4.0,
+  });
+  toneMappingEffect.exposure = exposure;
+  const chromaticAberrationEffect = new ChromaticAberrationEffect({
+    offset: new THREE.Vector2(0.0006, 0.0006),
+    radialModulation: true,
+    modulationOffset: 0.2,
+  });
+  const noiseEffect = new NoiseEffect({ premultiply: true });
+  noiseEffect.blendMode.opacity.value = 0.028;
+  const vignetteEffect = new VignetteEffect({
+    offset: 0.38,
+    darkness: 0.52,
+  });
+  const composer = new EffectComposer(renderer, {
+    frameBufferType: THREE.HalfFloatType,
+  });
+  composer.addPass(new RenderPass(scene, camera));
+  composer.addPass(
+    new EffectPass(
+      camera,
+      bloomEffect,
+      chromaticAberrationEffect,
+      noiseEffect,
+      vignetteEffect,
+      toneMappingEffect,
+    ),
+  );
+
+  return {
+    bloomEffect,
+    render: () => composer.render(),
+    setSize: (width, height) => composer.setSize(width, height, false),
+  };
+}
+
 function readSettings() {
   const params = new URLSearchParams(window.location.search);
   const quality = params.get("quality") || "cinematic";
   const qualityMap = {
     low: {
-      backdrop: 750,
-      dust: 900,
-      sparkDust: 900,
-      segments: 176,
-      fps: 24,
+      backdrop: 650,
+      dust: 520,
+      sparkDust: 650,
+      segments: 104,
+      orbits: 11,
+      trailDensity: 0.5,
+      meteors: 0,
+      cinematicGlow: false,
+      cameraSway: 0,
+      planetSpin: 0.025,
+      planetBreath: 0.012,
+      planetBreathSpeed: 0.24,
+      postprocessing: false,
       exposure: 0.86,
       bloomStrength: 0.28,
       bloomRadius: 0.32,
       bloomThreshold: 0.58,
-      pixelRatio: 1,
+      fps: 24,
+      pixelRatio: 0.9,
     },
     balanced: {
-      backdrop: 1500,
-      dust: 2600,
-      sparkDust: 3200,
-      segments: 260,
-      fps: 30,
+      backdrop: 1400,
+      dust: 1800,
+      sparkDust: 2400,
+      segments: 160,
+      orbits: 14,
+      trailDensity: 0.75,
+      meteors: 1,
+      cinematicGlow: true,
+      cameraSway: 0.25,
+      planetSpin: 0.04,
+      planetBreath: 0.026,
+      planetBreathSpeed: 0.28,
+      postprocessing: false,
       exposure: 0.9,
       bloomStrength: 0.46,
       bloomRadius: 0.42,
       bloomThreshold: 0.52,
-      pixelRatio: 1.15,
+      fps: 24,
+      pixelRatio: 1,
     },
     high: {
-      backdrop: 2600,
-      dust: 5200,
-      sparkDust: 6800,
-      segments: 340,
-      fps: 30,
+      backdrop: 2000,
+      dust: 3600,
+      sparkDust: 5000,
+      segments: 220,
+      orbits: 17,
+      trailDensity: 0.9,
+      meteors: 2,
+      cinematicGlow: true,
+      cameraSway: 0.45,
+      planetSpin: 0.05,
+      planetBreath: 0.032,
+      planetBreathSpeed: 0.32,
+      postprocessing: true,
       exposure: 0.94,
       bloomStrength: 0.62,
       bloomRadius: 0.52,
       bloomThreshold: 0.46,
-      pixelRatio: 1.25,
+      fps: 30,
+      pixelRatio: 1.1,
     },
     cinematic: {
       backdrop: 3600,
       dust: 36000,
       sparkDust: 52000,
       segments: 420,
-      fps: 30,
+      orbits: 19,
+      trailDensity: 1.15,
+      meteors: 3,
+      cinematicGlow: true,
+      cameraSway: 1,
+      planetSpin: 0.055,
+      planetBreath: 0.04,
+      planetBreathSpeed: 0.36,
+      postprocessing: true,
       exposure: 0.82,
       bloomStrength: 0.64,
       bloomRadius: 0.58,
       bloomThreshold: 0.5,
+      fps: 30,
       pixelRatio: 1.35,
     },
   };
-  const selected = qualityMap[quality] || qualityMap.balanced;
+  const selected = qualityMap[quality] || qualityMap.cinematic;
+  const qualityName = qualityMap[quality] ? quality : "cinematic";
   const themeName = params.get("theme") || "nebula";
   const palette = readPalette(params.get("palette"), themeName);
   const fps = clamp(Number(params.get("fps") ?? selected.fps), 0, 144);
+  const planetSpin = clamp(Number(params.get("planetSpin") ?? selected.planetSpin), 0, 0.25);
+  const planetBreath = clamp(Number(params.get("planetBreath") ?? selected.planetBreath), 0, 0.08);
+  const planetBreathSpeed = clamp(Number(params.get("planetBreathSpeed") ?? selected.planetBreathSpeed), 0.05, 1);
 
   return {
     ...selected,
-    quality,
+    quality: qualityName,
     palette,
     themeName,
     fps,
     frameInterval: fps > 0 ? 1000 / fps : 0,
     speed: clamp(Number(params.get("speed") || 1), 0.2, 2),
-    cameraSway: clamp(Number(params.get("cameraSway") || 1), 0, 3),
-    exposure: clamp(Number(params.get("exposure") || selected.exposure), 0.6, 1.8),
-    bloomStrength: clamp(Number(params.get("bloom") || selected.bloomStrength), 0, 2),
-    bloomRadius: clamp(Number(params.get("bloomRadius") || selected.bloomRadius), 0, 1.2),
-    bloomThreshold: clamp(
-      Number(params.get("bloomThreshold") || selected.bloomThreshold),
-      0,
-      1,
-    ),
-    pixelRatio: clamp(Number(params.get("pixelRatio") || selected.pixelRatio), 0.75, 2),
+    cameraSway: clamp(Number(params.get("cameraSway") ?? selected.cameraSway), 0, 1.5),
+    planetSpin,
+    planetBreath,
+    planetBreathSpeed,
+    postprocessing: readBoolean(params.get("postprocessing"), selected.postprocessing),
+    exposure: clamp(Number(params.get("exposure") ?? selected.exposure), 0.6, 1.8),
+    bloomStrength: clamp(Number(params.get("bloom") ?? selected.bloomStrength), 0, 2),
+    bloomRadius: clamp(Number(params.get("bloomRadius") ?? selected.bloomRadius), 0, 1.2),
+    bloomThreshold: clamp(Number(params.get("bloomThreshold") ?? selected.bloomThreshold), 0, 1),
+    pixelRatio: clamp(Number(params.get("pixelRatio") ?? selected.pixelRatio), 0.5, 1.5),
   };
 }
 
@@ -715,8 +792,8 @@ function updateBackdropNovas(backdrop, time) {
   if (dirty) attr.needsUpdate = true;
 }
 
-function createMeteors({ palette }) {
-  const poolSize = 3;
+function createMeteors({ palette, meteors = 0 }) {
+  const poolSize = Math.max(0, Math.floor(meteors));
   const meshes = [];
   const slots = [];
 
@@ -769,7 +846,7 @@ function createMeteors({ palette }) {
   return {
     meshes,
     slots,
-    nextSpawn: 12 + Math.random() * 18,
+    nextSpawn: poolSize > 0 ? 12 + Math.random() * 18 : Number.POSITIVE_INFINITY,
   };
 }
 
@@ -818,7 +895,15 @@ function updateMeteors(meteors, time) {
   }
 }
 
-function createOrbitSystem({ dust, sparkDust, segments, palette }) {
+function createOrbitSystem({
+  dust,
+  sparkDust,
+  segments,
+  palette,
+  orbits: orbitCount = 12,
+  trailDensity = 0.58,
+  cinematicGlow = false,
+}) {
   const group = new THREE.Group();
   group.rotation.x = -1.14;
   group.rotation.z = -0.035;
@@ -827,7 +912,6 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
   const orbits = [];
   const trails = [];
   const allTrails = [];
-  const orbitCount = 19;
 
   for (let i = 0; i < orbitCount; i += 1) {
     const rx = 2.35 + i * 0.69;
@@ -840,7 +924,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
     const opacity = Math.max(0.0028, 0.011 - i * 0.00028);
     const focusBlur = orbitFocusBlur(i, orbitCount);
 
-    if (focusBlur > 0.02) {
+    if (cinematicGlow && focusBlur > 0.02) {
       const defocusWash = createOrbitTube(
         rx,
         ry,
@@ -882,9 +966,10 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
     );
     group.add(glow, core);
 
-    const trailCount = i < 3 ? 2 : i < 9 ? 3 : 4;
+    const baseTrailCount = i < 3 ? 1 : i < 8 ? 2 : 3;
+    const trailCount = Math.max(1, Math.round(baseTrailCount * trailDensity));
     for (let j = 0; j < trailCount; j += 1) {
-      const featureTrail = j === 0 && (i === 3 || i === 6 || i === 10 || i > 13);
+      const featureTrail = cinematicGlow && j === 0 && (i === 3 || i === 6 || i === 10 || i > 13);
       const trailOptions = {
         phase: Math.random(),
         speed: 0.012 + Math.random() * 0.032 + i * 0.0011,
@@ -895,25 +980,27 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
       const flare = featureTrail
         ? { freq: 0.07 + Math.random() * 0.04, phase: Math.random() * Math.PI * 2, boost: 0.55 + Math.random() * 0.25 }
         : null;
-      const halo = createOrbitTrail(
-        rx,
-        ry,
-        segments,
-        tube * (7.5 + Math.random() * 4.5),
-        color,
-        {
-          ...trailOptions,
-          depth: offsetDepth(depth, 0.036 + j * 0.018),
-          occlusion,
-          halo: 1,
-          focusBlur,
-          length: trailOptions.length * 1.2,
-          opacity: trailOptions.opacity * (0.12 + focusBlur * 0.12),
-        },
-      );
-      if (flare) halo.userData.flare = { ...flare, baseOpacity: trailOptions.opacity * (0.12 + focusBlur * 0.12) };
-      group.add(halo);
-      allTrails.push(halo);
+      if (cinematicGlow) {
+        const halo = createOrbitTrail(
+          rx,
+          ry,
+          segments,
+          tube * (7.5 + Math.random() * 4.5),
+          color,
+          {
+            ...trailOptions,
+            depth: offsetDepth(depth, 0.036 + j * 0.018),
+            occlusion,
+            halo: 1,
+            focusBlur,
+            length: trailOptions.length * 1.2,
+            opacity: trailOptions.opacity * (0.12 + focusBlur * 0.12),
+          },
+        );
+        if (flare) halo.userData.flare = { ...flare, baseOpacity: trailOptions.opacity * (0.12 + focusBlur * 0.12) };
+        group.add(halo);
+        allTrails.push(halo);
+      }
 
       const trail = createOrbitTrail(
         rx,
@@ -946,7 +1033,7 @@ function createOrbitSystem({ dust, sparkDust, segments, palette }) {
   const sparkCloud = createTrailSparks(trails, sparkDust, occlusion);
   group.add(sparkCloud.points);
 
-  const sprites = createOrbitSprites(trails);
+  const sprites = cinematicGlow ? createOrbitSprites(trails) : [];
   for (const sprite of sprites) {
     group.add(sprite);
   }
@@ -1474,62 +1561,70 @@ function createOrbitSprites(trails) {
   return sprites;
 }
 
-function createPlanet({ palette }) {
+function createPlanet({ palette, cinematicGlow = false }) {
   const group = new THREE.Group();
   group.position.set(3.35, 0.92, 0.02);
   const inner = samplePalette(palette, 1);
   const mid = samplePalette(palette, 0.6);
   const outer = samplePalette(palette, 0);
   const planetRadius = 1.56;
-  const aura = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: createAuraTexture(),
-      color: inner.clone().lerp(outer, 0.16),
-      transparent: true,
-      opacity: 0.13,
-      blending: THREE.AdditiveBlending,
-      depthTest: true,
-      depthWrite: false,
-    }),
-  );
-  aura.position.set(0.35, 0.18, -0.9);
-  aura.scale.set(7, 7, 1);
-  aura.userData.baseScale = aura.scale.clone();
-  aura.userData.baseOpacity = aura.material.opacity;
+  let aura = null;
+  let rayFan = null;
+  let lightLeak = null;
+  let softHalo = null;
+  let limbBokeh = null;
 
-  const rayFan = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: createRayFanTexture(),
-      color: inner.clone().lerp(WHITE, 0.05),
-      transparent: true,
-      opacity: 0.42,
-      blending: THREE.AdditiveBlending,
-      depthTest: true,
-      depthWrite: false,
-    }),
-  );
-  rayFan.position.set(0.48, 0.2, -1.15);
-  rayFan.scale.set(7.8, 5.2, 1);
+  if (cinematicGlow) {
+    aura = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: createAuraTexture(),
+        color: inner.clone().lerp(outer, 0.16),
+        transparent: true,
+        opacity: 0.13,
+        blending: THREE.AdditiveBlending,
+        depthTest: true,
+        depthWrite: false,
+      }),
+    );
+    aura.position.set(0.35, 0.18, -0.9);
+    aura.scale.set(7, 7, 1);
+    aura.userData.baseScale = aura.scale.clone();
+    aura.userData.baseOpacity = aura.material.opacity;
 
-  const lightLeak = new THREE.Sprite(
-    new THREE.SpriteMaterial({
-      map: createLightLeakTexture(),
-      color: inner.clone().lerp(WHITE, 0.32),
-      transparent: true,
-      opacity: 0.36,
-      blending: THREE.AdditiveBlending,
-      depthTest: true,
-      depthWrite: false,
-    }),
-  );
-  lightLeak.position.set(0.18, 0.12, -0.55);
-  lightLeak.scale.set(9.2, 1.4, 1);
-  lightLeak.userData.baseOpacity = lightLeak.material.opacity;
-  lightLeak.userData.baseScaleX = lightLeak.scale.x;
-  lightLeak.userData.baseScaleY = lightLeak.scale.y;
+    rayFan = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: createRayFanTexture(),
+        color: inner.clone().lerp(WHITE, 0.05),
+        transparent: true,
+        opacity: 0.42,
+        blending: THREE.AdditiveBlending,
+        depthTest: true,
+        depthWrite: false,
+      }),
+    );
+    rayFan.position.set(0.48, 0.2, -1.15);
+    rayFan.scale.set(7.8, 5.2, 1);
 
-  const softHalo = createPlanetSoftHalo(inner, mid, outer);
-  const limbBokeh = createPlanetLimbBokeh(palette, planetRadius);
+    lightLeak = new THREE.Sprite(
+      new THREE.SpriteMaterial({
+        map: createLightLeakTexture(),
+        color: inner.clone().lerp(WHITE, 0.32),
+        transparent: true,
+        opacity: 0.36,
+        blending: THREE.AdditiveBlending,
+        depthTest: true,
+        depthWrite: false,
+      }),
+    );
+    lightLeak.position.set(0.18, 0.12, -0.55);
+    lightLeak.scale.set(9.2, 1.4, 1);
+    lightLeak.userData.baseOpacity = lightLeak.material.opacity;
+    lightLeak.userData.baseScaleX = lightLeak.scale.x;
+    lightLeak.userData.baseScaleY = lightLeak.scale.y;
+
+    softHalo = createPlanetSoftHalo(inner, mid, outer);
+    limbBokeh = createPlanetLimbBokeh(palette, planetRadius);
+  }
 
   const surface = new THREE.Mesh(
     new THREE.SphereGeometry(planetRadius, 56, 36),
@@ -1639,8 +1734,11 @@ function createPlanet({ palette }) {
     }),
   );
 
-  const pinLights = createPlanetPinLights(palette);
-  group.add(rayFan, lightLeak, aura, softHalo, glow, limbBokeh, surface, pinLights);
+  const pinLights = cinematicGlow ? createPlanetPinLights(palette) : null;
+  group.add(glow, surface);
+  for (const extra of [rayFan, lightLeak, aura, softHalo, limbBokeh, pinLights]) {
+    if (extra) group.add(extra);
+  }
 
   return {
     group,
@@ -2167,6 +2265,14 @@ function parsePalette(rawPalette) {
     .map((part) => part.trim())
     .map((part) => (part.startsWith("#") ? part : `#${part.replace(/^0x/i, "")}`))
     .filter((part) => /^#(?:[0-9a-f]{3}|[0-9a-f]{6})$/i.test(part));
+}
+
+function readBoolean(rawValue, fallback) {
+  if (rawValue === null) {
+    return fallback;
+  }
+
+  return !["0", "false", "off", "no"].includes(rawValue.toLowerCase());
 }
 
 function samplePalette(palette, t) {

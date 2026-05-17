@@ -1,9 +1,0 @@
-{
-  "wallpaperPath": "D:\\forPublic\\PurplePlanet\\live-wallpaper",
-  "layout": "span",
-  "queryString": "quality=balanced&fps=30&pixelRatio=1",
-  "browserExecutable": null,
-  "attachToDesktop": true,
-  "restartOnDisplayChange": true,
-  "startupTimeoutMs": 10000
-}

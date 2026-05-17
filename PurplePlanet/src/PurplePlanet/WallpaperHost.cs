@@ -1,7 +1,7 @@
 using System.Diagnostics;
 using System.Drawing;
 
-namespace LivelyLite;
+namespace PurplePlanet;
 
 internal sealed class WallpaperHost : IDisposable
 {
@@ -16,23 +16,28 @@ internal sealed class WallpaperHost : IDisposable
 
     public void Start(AppConfig newConfig)
     {
+        Start(newConfig, WallpaperHostOptions.Desktop);
+    }
+
+    public void Start(AppConfig newConfig, WallpaperHostOptions options)
+    {
         Stop();
 
         config = newConfig;
         asset = LivelyAsset.Load(newConfig.WallpaperPath);
         if (!asset.IsSupported)
-            throw new NotSupportedException($"'{asset.Kind}' wallpapers are intentionally not included in LivelyLite.");
+            throw new NotSupportedException($"'{asset.Kind}' wallpapers are intentionally not included in PurplePlanet.");
 
         if (asset.RequiresHttpServer)
             staticFileServer = new StaticFileServer(asset.RootDirectory);
 
         var browser = BrowserLocator.Find(newConfig.BrowserExecutable);
         profileRoot = Path.Combine(AppPaths.BrowserProfiles, Guid.NewGuid().ToString("N"));
-        var targets = GetTargets(newConfig);
+        var targets = GetTargets(newConfig, options);
 
         foreach (var target in targets)
         {
-            var process = LaunchBrowser(browser, asset, newConfig, target, staticFileServer, profileRoot, browserJob);
+            var process = LaunchBrowser(browser, asset, newConfig, options, target, staticFileServer, profileRoot, browserJob);
             processes.Add(process);
         }
     }
@@ -75,8 +80,18 @@ internal sealed class WallpaperHost : IDisposable
         profileRoot = null;
     }
 
-    private static IReadOnlyList<TargetDisplay> GetTargets(AppConfig config)
+    private static IReadOnlyList<TargetDisplay> GetTargets(AppConfig config, WallpaperHostOptions options)
     {
+        if (options.Mode == WallpaperHostMode.Preview)
+        {
+            if (!NativeMethods.GetClientRect(options.ParentWindow, out var rect))
+                throw new InvalidOperationException("Could not read the screensaver preview bounds.");
+
+            var width = Math.Max(1, rect.Width);
+            var height = Math.Max(1, rect.Height);
+            return [new TargetDisplay("preview", new Rectangle(0, 0, width, height))];
+        }
+
         if (config.NormalizedLayout == "per-monitor")
         {
             return Screen.AllScreens
@@ -91,6 +106,7 @@ internal sealed class WallpaperHost : IDisposable
         string browserPath,
         LivelyAsset asset,
         AppConfig config,
+        WallpaperHostOptions options,
         TargetDisplay target,
         StaticFileServer? staticFileServer,
         string profileRoot,
@@ -115,8 +131,12 @@ internal sealed class WallpaperHost : IDisposable
         psi.ArgumentList.Add("--disable-background-networking");
         psi.ArgumentList.Add("--disable-default-apps");
         psi.ArgumentList.Add("--disable-session-crashed-bubble");
+        psi.ArgumentList.Add("--disable-extensions");
+        psi.ArgumentList.Add("--disable-notifications");
+        psi.ArgumentList.Add("--disable-infobars");
         psi.ArgumentList.Add("--disable-features=msEdgeStartupBoost,HardwareMediaKeyHandling,SigninInterception,AccountConsistency,EdgeSync,msImplicitSignin");
         psi.ArgumentList.Add("--autoplay-policy=no-user-gesture-required");
+        psi.ArgumentList.Add("--noerrdialogs");
         psi.ArgumentList.Add($"--window-position={target.Bounds.Left},{target.Bounds.Top}");
         psi.ArgumentList.Add($"--window-size={target.Bounds.Width},{target.Bounds.Height}");
         psi.ArgumentList.Add($"--app={url}");
@@ -127,8 +147,19 @@ internal sealed class WallpaperHost : IDisposable
         if (hwnd == IntPtr.Zero)
             throw new TimeoutException("Timed out waiting for browser wallpaper window.");
 
-        if (config.AttachToDesktop)
-            AttachToDesktop(hwnd, target.Bounds);
+        if (options.Mode == WallpaperHostMode.Desktop)
+        {
+            if (config.AttachToDesktop)
+                AttachToDesktop(hwnd, target.Bounds);
+        }
+        else if (options.Mode == WallpaperHostMode.Screensaver)
+        {
+            StyleAsScreensaver(hwnd, target.Bounds);
+        }
+        else
+        {
+            StyleAsPreview(hwnd, options.ParentWindow, target.Bounds);
+        }
 
         return new WallpaperProcess(process, hwnd, target.Bounds);
     }
@@ -261,6 +292,70 @@ internal sealed class WallpaperHost : IDisposable
         _ = NativeMethods.EnableWindow(hwnd, false);
     }
 
+    private static void StyleAsScreensaver(IntPtr hwnd, Rectangle bounds)
+    {
+        var style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        style &= ~(NativeMethods.WS_CHILD |
+                   NativeMethods.WS_CAPTION |
+                   NativeMethods.WS_THICKFRAME |
+                   NativeMethods.WS_SYSMENU |
+                   NativeMethods.WS_MINIMIZEBOX |
+                   NativeMethods.WS_MAXIMIZEBOX);
+        style |= NativeMethods.WS_POPUP | NativeMethods.WS_VISIBLE;
+        _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+
+        var exStyle = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
+        exStyle &= ~NativeMethods.WS_EX_APPWINDOW;
+        exStyle |= NativeMethods.WS_EX_TOOLWINDOW;
+        _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
+
+        _ = NativeMethods.SetWindowPos(
+            hwnd,
+            NativeMethods.HWND_TOPMOST,
+            bounds.Left,
+            bounds.Top,
+            bounds.Width,
+            bounds.Height,
+            NativeMethods.SWP_FRAMECHANGED |
+            NativeMethods.SWP_SHOWWINDOW |
+            NativeMethods.SWP_NOOWNERZORDER);
+
+        _ = NativeMethods.EnableWindow(hwnd, true);
+    }
+
+    private static void StyleAsPreview(IntPtr hwnd, IntPtr parent, Rectangle bounds)
+    {
+        var style = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE).ToInt64();
+        style &= ~(NativeMethods.WS_POPUP |
+                   NativeMethods.WS_CAPTION |
+                   NativeMethods.WS_THICKFRAME |
+                   NativeMethods.WS_SYSMENU |
+                   NativeMethods.WS_MINIMIZEBOX |
+                   NativeMethods.WS_MAXIMIZEBOX);
+        style |= NativeMethods.WS_CHILD | NativeMethods.WS_VISIBLE;
+        _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_STYLE, new IntPtr(style));
+
+        _ = NativeMethods.SetParent(hwnd, parent);
+
+        var exStyle = NativeMethods.GetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE).ToInt64();
+        exStyle &= ~NativeMethods.WS_EX_APPWINDOW;
+        exStyle |= NativeMethods.WS_EX_TOOLWINDOW;
+        _ = NativeMethods.SetWindowLongPtr(hwnd, NativeMethods.GWL_EXSTYLE, new IntPtr(exStyle));
+
+        _ = NativeMethods.SetWindowPos(
+            hwnd,
+            IntPtr.Zero,
+            0,
+            0,
+            bounds.Width,
+            bounds.Height,
+            NativeMethods.SWP_FRAMECHANGED |
+            NativeMethods.SWP_SHOWWINDOW |
+            NativeMethods.SWP_NOZORDER);
+
+        _ = NativeMethods.EnableWindow(hwnd, true);
+    }
+
     public void Dispose()
     {
         Stop();
@@ -295,4 +390,18 @@ internal sealed class WallpaperHost : IDisposable
             }
         }
     }
+}
+
+internal enum WallpaperHostMode
+{
+    Desktop,
+    Screensaver,
+    Preview
+}
+
+internal sealed record WallpaperHostOptions(WallpaperHostMode Mode, IntPtr ParentWindow)
+{
+    public static WallpaperHostOptions Desktop { get; } = new(WallpaperHostMode.Desktop, IntPtr.Zero);
+    public static WallpaperHostOptions Screensaver { get; } = new(WallpaperHostMode.Screensaver, IntPtr.Zero);
+    public static WallpaperHostOptions Preview(IntPtr parentWindow) => new(WallpaperHostMode.Preview, parentWindow);
 }
