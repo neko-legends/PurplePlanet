@@ -20,6 +20,7 @@ $packagesDir = Join-Path $root "packages"
 $stageDir = Join-Path $packagesDir "_PurplePlanet"
 $zipPath = Join-Path $packagesDir "PurplePlanet.zip"
 $legacyLivelyPath = Join-Path $packagesDir "PurplePlanet.lively"
+$thumbnailSource = Join-Path $root "docs\purpleplanet-preview.png"
 
 Set-Location $root
 
@@ -51,6 +52,7 @@ if (Test-Path -LiteralPath $stageDir) {
 New-Item -ItemType Directory -Path $stageDir | Out-Null
 Copy-Item -Path (Join-Path $buildDir "*") -Destination $stageDir -Recurse -Force
 Copy-Item -LiteralPath (Join-Path $root "LICENSE") -Destination $stageDir -Force
+Copy-Item -LiteralPath $thumbnailSource -Destination (Join-Path $stageDir "thumbnail.png") -Force
 
 $query = "quality=$Quality&fps=$Fps&theme=$Theme&pixelRatio=$PixelRatio"
 $launcher = @"
@@ -75,6 +77,8 @@ Set-Content -LiteralPath (Join-Path $stageDir "wallpaper.html") -Value $launcher
 $metadata = [ordered]@{
   AppVersion = "2.2.1.0"
   Title = "PurplePlanet"
+  Thumbnail = "thumbnail.png"
+  Preview = "thumbnail.png"
   Desc = "Colorful lightweight Three.js orbital planet live wallpaper."
   Author = "Neko Legends (@softpoo)"
   License = "MIT"
