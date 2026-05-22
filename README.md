@@ -4,6 +4,8 @@ PurplePlanet is a public art installation by Neko Legends (`@softpoo` on X): a s
 
 Use it as a live wallpaper, Windows screensaver, website backdrop, game menu, learning reference, ambient display, or simply as a relaxing piece of motion art. The project is built with Three.js and designed to stay portable, inspectable, and easy to adapt.
 
+Live demo: https://nekolegends.com/res/projects/purplePlanet/
+
 ![PurplePlanet preview](docs/purpleplanet-preview.png)
 
 The scene renders a rim-lit purple planet, drifting orbital lanes, glowing particle wakes, counter-rotating bokeh, and a subtle breathing motion. It runs as a local browser experience, a Lively Wallpaper package, or the included lightweight Windows screensaver host.
@@ -42,10 +44,9 @@ npm run package:lively
 Generated outputs:
 
 - `live-wallpaper/` is the self-contained static web wallpaper.
-- `packages/PurplePlanet.lively` is the Lively package.
-- `packages/PurplePlanet.zip` is the same package as a normal zip.
+- `packages/PurplePlanet.zip` is the Lively package.
 
-For Lively Wallpaper, drag `packages/PurplePlanet.lively` or `packages/PurplePlanet.zip` into the Lively window. If Windows associates `.lively` files with Lively, double-clicking `PurplePlanet.lively` will open it there. Enable `Start with Windows` inside Lively so the wallpaper starts on boot.
+For Lively Wallpaper, drag `packages/PurplePlanet.zip` into the Lively window. Enable `Start with Windows` inside Lively so the wallpaper starts on boot. Current Lively builds import wallpaper packages through the `.zip` extension; a `.lively` copy may be rejected as "file not supported."
 
 For Wallpaper Engine, create a web wallpaper from `live-wallpaper/index.html`, then enable Wallpaper Engine startup in its settings.
 

@@ -16,7 +16,7 @@ $hostInstall = Join-Path $hostDir "Install-Screensaver.ps1"
 $hostConfig = Join-Path $hostDir "config.json"
 $liveWallpaper = Join-Path $root "live-wallpaper"
 $liveIndex = Join-Path $liveWallpaper "index.html"
-$package = Join-Path $root "packages\PurplePlanet.lively"
+$package = Join-Path $root "packages\PurplePlanet.zip"
 
 function Require-Command($name, $message) {
   if (-not (Get-Command $name -ErrorAction SilentlyContinue)) {

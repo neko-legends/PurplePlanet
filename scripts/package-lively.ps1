@@ -19,7 +19,7 @@ $buildDir = Join-Path $root "live-wallpaper"
 $packagesDir = Join-Path $root "packages"
 $stageDir = Join-Path $packagesDir "_PurplePlanet"
 $zipPath = Join-Path $packagesDir "PurplePlanet.zip"
-$livelyPath = Join-Path $packagesDir "PurplePlanet.lively"
+$legacyLivelyPath = Join-Path $packagesDir "PurplePlanet.lively"
 
 Set-Location $root
 
@@ -79,10 +79,13 @@ $metadata = [ordered]@{
   Author = "Neko Legends (@softpoo)"
   License = "MIT"
   Contact = "https://nekolegends.com"
-  Type = 2
+  Type = 1
   FileName = "wallpaper.html"
   Arguments = $null
   IsAbsolutePath = $false
+  Id = $null
+  Tags = @("planet", "space", "threejs")
+  Version = 1
 }
 
 $metadata |
@@ -94,7 +97,7 @@ PurplePlanet
 
 Lively Wallpaper:
 1. Open Lively.
-2. Drag PurplePlanet.lively or PurplePlanet.zip into the Lively window.
+2. Drag PurplePlanet.zip into the Lively window.
 3. In Lively Settings, enable Start with Windows.
 4. For the mixed 3-monitor setup, use the Span layout if you want one continuous wallpaper across all displays.
 
@@ -112,18 +115,17 @@ Set-Content -LiteralPath (Join-Path $stageDir "README-install.txt") -Value $inst
 if (Test-Path -LiteralPath $zipPath) {
   Remove-Item -LiteralPath $zipPath -Force
 }
-if (Test-Path -LiteralPath $livelyPath) {
-  Remove-Item -LiteralPath $livelyPath -Force
+if (Test-Path -LiteralPath $legacyLivelyPath) {
+  Remove-Item -LiteralPath $legacyLivelyPath -Force
 }
 
 Compress-Archive -Path (Join-Path $stageDir "*") -DestinationPath $zipPath -Force
-Copy-Item -LiteralPath $zipPath -Destination $livelyPath -Force
 Remove-Item -LiteralPath $stageDir -Recurse -Force
 
 Write-Host ""
 Write-Host "Built wallpaper folder:"
 Write-Host "  $buildDir"
 Write-Host "Lively package:"
-Write-Host "  $livelyPath"
-Write-Host "Zip package:"
 Write-Host "  $zipPath"
+Write-Host ""
+Write-Host "Current Lively builds import wallpaper packages with the .zip extension. The legacy .lively copy is no longer generated."
