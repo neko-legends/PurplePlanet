@@ -101,7 +101,7 @@ Use URL parameters when adding it to a wallpaper app:
 - `?quality=balanced` keeps the aura, light leaks, spark heads, halo trails, and a small meteor pool enabled without postprocessing.
 - `?quality=high` adds denser trails, particles, postprocessing, and more motion.
 - `?quality=cinematic` is the default high-fidelity mode with dense particles, stronger glow, bloom, tone mapping, chromatic aberration, noise, and vignette.
-- `?fps=60` is the default cap. Use `?fps=30` or `?fps=24` for lower GPU use, or `?fps=0` to render every display refresh.
+- `?fps=30` is the default cap. Use `?fps=24` for lower GPU use, `?fps=60` for smoother motion, or `?fps=0` to render every display refresh.
 - `?speed=0.7` for slower drift.
 - `?planetSpin=0.055` controls the slow planet surface rotation and the round bokeh accents near the planet edge. Use `0` to keep them fixed.
 - `?planetBreath=0.04` controls the slow planet grow/shrink amount, and `?planetBreathSpeed=0.36` controls the cycle rate. Use `?planetBreath=0` to disable it.
@@ -117,7 +117,7 @@ Use URL parameters when adding it to a wallpaper app:
 Example:
 
 ```text
-http://127.0.0.1:5173/?quality=cinematic&fps=60&speed=0.85&pixelRatio=1.35&theme=nebula
+http://127.0.0.1:5173/?quality=cinematic&fps=30&speed=0.85&pixelRatio=1.35&theme=nebula
 ```
 
 Custom outside-to-inside palette:

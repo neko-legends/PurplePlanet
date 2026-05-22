@@ -3,7 +3,7 @@ param(
   [string]$Quality = "cinematic",
 
   [ValidateRange(0, 240)]
-  [int]$Fps = 60,
+  [int]$Fps = 30,
 
   [string]$Theme = "nebula",
 

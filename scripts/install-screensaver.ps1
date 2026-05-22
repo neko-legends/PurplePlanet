@@ -92,7 +92,7 @@ function Update-HostConfig($wallpaperPath) {
 
   $config = Get-Content -LiteralPath $hostConfig -Raw | ConvertFrom-Json
   $config.wallpaperPath = ConvertTo-RelativePath (Split-Path -Parent $hostConfig) $wallpaperPath
-  $config.queryString = "quality=cinematic&fps=60&pixelRatio=1.35"
+  $config.queryString = "quality=cinematic&fps=30&pixelRatio=1.35"
   $config | ConvertTo-Json -Depth 8 | Set-Content -LiteralPath $hostConfig -Encoding UTF8
 }
 

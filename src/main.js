@@ -778,7 +778,7 @@ function readSettings() {
       bloomStrength: 0.62,
       bloomRadius: 0.52,
       bloomThreshold: 0.46,
-      fps: 60,
+      fps: 30,
       pixelRatio: 1.1,
     },
     cinematic: {
@@ -799,7 +799,7 @@ function readSettings() {
       bloomStrength: 0.64,
       bloomRadius: 0.58,
       bloomThreshold: 0.5,
-      fps: 60,
+      fps: 30,
       pixelRatio: 1.35,
     },
   };
